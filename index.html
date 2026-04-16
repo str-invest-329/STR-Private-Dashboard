@@ -451,8 +451,8 @@ function populateTickerFilter() {
     if (market !== "ALL" && e["市場"] !== market) return;
     if (num(e["總持有股數"]) <= 0) return;
     var opt = document.createElement("option");
-    opt.value = e["標的"];
-    opt.textContent = e["標的"];
+    opt.value = e["Ticker"];
+    opt.textContent = e["Ticker"];
     select.appendChild(opt);
   });
   if (select.querySelector('option[value="' + current + '"]')) select.value = current;
@@ -708,7 +708,7 @@ function renderAllocationCharts() {
   // 成本基準
   var costLabels = [], costValues = [];
   equities.forEach(function(e) {
-    var label = isByAccount ? e["標的"] : e["標的"];
+    var label = isByAccount ? e["Ticker"] : e["Ticker"];
     var cost = num(isByAccount ? e["持有成本總額"] : e["總持有成本"]);
     if (cost > 0) { costLabels.push(label); costValues.push(cost); }
   });
@@ -717,7 +717,7 @@ function renderAllocationCharts() {
   // 市值基準
   var mktLabels = [], mktValues = [];
   equities.forEach(function(e) {
-    var label = isByAccount ? e["標的"] : e["標的"];
+    var label = isByAccount ? e["Ticker"] : e["Ticker"];
     var mkt = num(isByAccount ? e["持倉市值"] : e["總持倉市值"]);
     if (mkt > 0) { mktLabels.push(label); mktValues.push(mkt); }
   });
@@ -733,7 +733,7 @@ function renderUnrealizedChart() {
   var items = [];
 
   equities.forEach(function(e) {
-    var label = isByAccount ? (e["標的"] + "(" + e["帳戶名"] + ")") : e["標的"];
+    var label = isByAccount ? (e["Ticker"] + "(" + e["帳戶名"] + ")") : e["Ticker"];
     var pnl = num(e["未實現損益"]);
     items.push({ label: label, value: pnl });
   });
@@ -768,7 +768,7 @@ function renderRealizedDetailChart() {
     var dividend = num(e["累計已實現股息"]);
     var total = rpnl + dividend;
     if (total === 0 && rpnl === 0) return;
-    var label = isByAccount ? (e["標的"] + "(" + e["帳戶名"] + ")") : e["標的"];
+    var label = isByAccount ? (e["Ticker"] + "(" + e["帳戶名"] + ")") : e["Ticker"];
     items.push({ label: label, value: total });
   });
 
@@ -1084,7 +1084,7 @@ function renderHoldingsTable(market) {
     html += '<tr>' +
       '<td>' + e["銀行"] + '</td>' +
       '<td><span class="badge badge-account">' + e["帳戶名"] + '</span></td>' +
-      '<td><strong style="color:' + 'var(--primary-light)' + '">' + e["標的"] + '</strong></td>' +
+      '<td><strong style="color:' + 'var(--primary-light)' + '">' + e["Ticker"] + '</strong></td>' +
       '<td class="right">' + fmtNum(qty) + '</td>' +
       '<td class="right">' + fmtCurrency(num(e["平均成本"])) + '</td>' +
       '<td class="right">' + fmtCurrency(num(e["現價"])) + '</td>' +
@@ -1107,7 +1107,7 @@ function renderStocksTable(market) {
     var pnl = num(e["未實現損益"]);
     var rpnl = num(e["累計已實現損益"]);
     html += '<tr>' +
-      '<td><strong style="color:var(--primary-light)">' + e["標的"] + '</strong></td>' +
+      '<td><strong style="color:var(--primary-light)">' + e["Ticker"] + '</strong></td>' +
       '<td class="right">' + fmtNum(num(e["總持有股數"])) + '</td>' +
       '<td class="right">' + (e["平均成本"] === "-" ? "-" : fmtCurrency(num(e["平均成本"]))) + '</td>' +
       '<td class="right">' + fmtCurrency(num(e["現價"])) + '</td>' +
