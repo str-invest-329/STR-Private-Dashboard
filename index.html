@@ -52,7 +52,7 @@
     /* === KPI Cards === */
     .kpi-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 12px;
       margin-bottom: 16px;
     }
@@ -511,6 +511,9 @@ function renderKPI() {
     var tip = c.tooltip ? ' data-tooltip="' + c.tooltip + '"' : '';
     var subTip = c.subTooltip ? ' data-tooltip="' + c.subTooltip + '"' : '';
 
+    if (c.spacer) {
+      return '<div style="visibility:hidden"></div>';
+    }
     if (c.bar) {
       var eqPct = (c.bar.equity * 100).toFixed(1);
       var cashPct = (c.bar.cash * 100).toFixed(1);
@@ -553,14 +556,18 @@ function buildMarketKPI(f) {
   var realTotalRate = num(row["已實現總損益率"]);
   var eqWeight = num(row["股票倉位"]);
   var cashWeight = num(row["現金倉位"]);
+  var availCash = num(row["可用現金"]);
+  var deposit = num(row["定存"]);
 
   return [
     { label: "總資本", value: fmtCurrency(capital), sub: "外部注資合計", border: KPI_BORDERS[0], chartView: "allocation", tooltip: "總資本 = 股本 + 換匯 + 轉帳" },
     { label: "總資產", value: fmtCurrency(totalAssets), sub: "NAV " + fmtCurrency(nav), border: KPI_BORDERS[1], chartView: "allocation", tooltip: "總資產 = 持倉市值 + 可用現金 + 定存", subTooltip: "NAV = 總資產 - 總負債" },
     { label: "倉位配置", bar: { equity: eqWeight, cash: cashWeight }, border: KPI_BORDERS[2], chartView: "allocation", tooltip: "股票倉位 + 現金倉位 = 100%" },
-    { label: "總損益", value: fmtCurrency(totalPnL), sub: "總損益率 " + fmtPercent(totalReturn), border: KPI_BORDERS[3], cls: valCls(totalPnL), chartView: "pnl_breakdown", tooltip: "總損益 = 已實現總損益 + 未實現總損益", subTooltip: "總損益率 = 總損益 / 總資本" },
+    { spacer: true },
+    { label: "已實現總損益", value: fmtCurrency(realTotalPnL), sub: "已實現總損益率 " + fmtPercent(realTotalRate), border: KPI_BORDERS[5], cls: valCls(realTotalPnL), chartView: "realized_detail", tooltip: "已實現總損益 = 已實現股票損益 + 利息與股息 - 什支", subTooltip: "已實現總損益率 = 已實現總損益 / 總資本" },
     { label: "未實現總損益", value: fmtCurrency(unrealTotalPnL), sub: "未實現總損益率 " + fmtPercent(unrealTotalRate), border: KPI_BORDERS[4], cls: valCls(unrealTotalPnL), chartView: "unrealized", tooltip: "未實現總損益 = 持倉市值 - 持倉成本", subTooltip: "未實現總損益率 = 未實現總損益 / 總資本" },
-    { label: "已實現總損益", value: fmtCurrency(realTotalPnL), sub: "已實現總損益率 " + fmtPercent(realTotalRate), border: KPI_BORDERS[5], cls: valCls(realTotalPnL), chartView: "realized_detail", tooltip: "已實現總損益 = 已實現股票損益 + 利息與股息 - 什支", subTooltip: "已實現總損益率 = 已實現總損益 / 總資本" }
+    { label: "總損益", value: fmtCurrency(totalPnL), sub: "總損益率 " + fmtPercent(totalReturn), border: KPI_BORDERS[3], cls: valCls(totalPnL), chartView: "pnl_breakdown", tooltip: "總損益 = 已實現總損益 + 未實現總損益", subTooltip: "總損益率 = 總損益 / 總資本" },
+    { label: "可用現金", value: fmtCurrency(availCash), sub: "定存 " + fmtCurrency(deposit), border: KPI_BORDERS[1], chartView: "allocation", tooltip: "可用現金 = 帳戶可動用現金（不含定存）", subTooltip: "定存 = 目前定存金額" }
   ];
 }
 
@@ -581,14 +588,18 @@ function buildAccountKPI(f) {
   var realTotalRate = num(acct["已實現總損益率"]);
   var eqWeight = num(acct["股票倉位"]);
   var cashWeight = num(acct["現金倉位"]);
+  var availCash = num(acct["可用現金"]);
+  var deposit = num(acct["定存"]);
 
   return [
     { label: "總資本", value: fmtCurrency(capital), sub: f.account + " " + acct["幣別"], border: KPI_BORDERS[0], chartView: "allocation", tooltip: "總資本 = 股本 + 換匯 + 轉帳" },
     { label: "總資產", value: fmtCurrency(totalAssets), sub: "NAV " + fmtCurrency(nav), border: KPI_BORDERS[1], chartView: "allocation", tooltip: "總資產 = 持倉市值 + 可用現金 + 定存", subTooltip: "NAV = 總資產 - 總負債" },
     { label: "倉位配置", bar: { equity: eqWeight, cash: cashWeight }, border: KPI_BORDERS[2], chartView: "allocation", tooltip: "股票倉位 + 現金倉位 = 100%" },
-    { label: "總損益", value: fmtCurrency(totalPnL), sub: "總損益率 " + fmtPercent(totalReturn), border: KPI_BORDERS[3], cls: valCls(totalPnL), chartView: "pnl_breakdown", tooltip: "總損益 = 已實現總損益 + 未實現總損益", subTooltip: "總損益率 = 總損益 / 總資本" },
+    { spacer: true },
+    { label: "已實現總損益", value: fmtCurrency(realTotalPnL), sub: "已實現總損益率 " + fmtPercent(realTotalRate), border: KPI_BORDERS[5], cls: valCls(realTotalPnL), chartView: "realized_detail", tooltip: "已實現總損益 = 已實現股票損益 + 利息與股息 - 什支", subTooltip: "已實現總損益率 = 已實現總損益 / 總資本" },
     { label: "未實現總損益", value: fmtCurrency(unrealTotalPnL), sub: "未實現總損益率 " + fmtPercent(unrealTotalRate), border: KPI_BORDERS[4], cls: valCls(unrealTotalPnL), chartView: "unrealized", tooltip: "未實現總損益 = 持倉市值 - 持倉成本", subTooltip: "未實現總損益率 = 未實現總損益 / 總資本" },
-    { label: "已實現總損益", value: fmtCurrency(realTotalPnL), sub: "已實現總損益率 " + fmtPercent(realTotalRate), border: KPI_BORDERS[5], cls: valCls(realTotalPnL), chartView: "realized_detail", tooltip: "已實現總損益 = 已實現股票損益 + 利息與股息 - 什支", subTooltip: "已實現總損益率 = 已實現總損益 / 總資本" }
+    { label: "總損益", value: fmtCurrency(totalPnL), sub: "總損益率 " + fmtPercent(totalReturn), border: KPI_BORDERS[3], cls: valCls(totalPnL), chartView: "pnl_breakdown", tooltip: "總損益 = 已實現總損益 + 未實現總損益", subTooltip: "總損益率 = 總損益 / 總資本" },
+    { label: "可用現金", value: fmtCurrency(availCash), sub: "定存 " + fmtCurrency(deposit), border: KPI_BORDERS[1], chartView: "allocation", tooltip: "可用現金 = 帳戶可動用現金（不含定存）", subTooltip: "定存 = 目前定存金額" }
   ];
 }
 
