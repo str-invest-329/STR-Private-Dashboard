@@ -1094,10 +1094,16 @@ function renderHoldingsTable(market) {
   var data = filterData(DATA.equity_by_account);
   var html = '<table><tr><th>銀行</th><th>帳戶</th><th>標的</th><th class="right">股數</th><th class="right">平均成本</th><th class="right">現價</th><th class="right">市值</th><th class="right">未實現損益</th><th class="right">報酬率</th><th class="right">占比</th></tr>';
 
+  var totals = { marketValue: 0, pnl: 0 };
+
   data.forEach(function(e) {
     var qty = num(e["持有股數"]);
     if (qty <= 0) return;
     var pnl = num(e["未實現損益"]);
+    var mv  = num(e["持倉市值"]);
+    totals.marketValue += mv;
+    totals.pnl         += pnl;
+
     html += '<tr>' +
       '<td>' + e["銀行"] + '</td>' +
       '<td><span class="badge badge-account">' + e["帳戶名"] + '</span></td>' +
@@ -1105,12 +1111,20 @@ function renderHoldingsTable(market) {
       '<td class="right">' + fmtNum(qty) + '</td>' +
       '<td class="right">' + fmtCurrency(num(e["平均成本"])) + '</td>' +
       '<td class="right">' + fmtCurrency(num(e["現價"])) + '</td>' +
-      '<td class="right">' + fmtCurrency(num(e["持倉市值"])) + '</td>' +
+      '<td class="right">' + fmtCurrency(mv) + '</td>' +
       '<td class="right ' + valCls(pnl) + '">' + fmtCurrency(pnl) + '</td>' +
       '<td class="right ' + valCls(pnl) + '">' + fmtPercent(num(e["未實現損益率"])) + '</td>' +
       '<td class="right">' + fmtPercent(num(e["持倉占比"])) + '</td>' +
       '</tr>';
   });
+
+  html += '<tr style="font-weight:700;border-top:2px solid var(--border)">' +
+    '<td colspan="6">合計</td>' +
+    '<td class="right">' + fmtCurrency(totals.marketValue) + '</td>' +
+    '<td class="right ' + valCls(totals.pnl) + '">' + fmtCurrency(totals.pnl) + '</td>' +
+    '<td class="right">-</td>' +
+    '<td class="right">-</td>' +
+    '</tr>';
 
   html += '</table>';
   return html;
@@ -1120,22 +1134,43 @@ function renderStocksTable(market) {
   var data = filterData(DATA.equity_by_ticker);
   var html = '<table><tr><th>標的</th><th class="right">股數</th><th class="right">平均成本</th><th class="right">現價</th><th class="right">持有成本</th><th class="right">市值</th><th class="right">未實現損益</th><th class="right">報酬率</th><th class="right">已實現損益</th><th class="right">股息</th></tr>';
 
+  var totals = { cost: 0, marketValue: 0, pnl: 0, rpnl: 0, dividend: 0 };
+
   data.forEach(function(e) {
-    var pnl = num(e["未實現損益"]);
+    var pnl  = num(e["未實現損益"]);
     var rpnl = num(e["累計已實現損益"]);
+    var mv   = num(e["總持倉市值"]);
+    var cost = num(e["總持有成本"]);
+    var div  = num(e["累計已實現股息"]);
+    totals.cost        += cost;
+    totals.marketValue += mv;
+    totals.pnl         += pnl;
+    totals.rpnl        += rpnl;
+    totals.dividend    += div;
+
     html += '<tr>' +
       '<td><strong style="color:var(--primary-light)">' + e["Ticker"] + '</strong></td>' +
       '<td class="right">' + fmtNum(num(e["總持有股數"])) + '</td>' +
       '<td class="right">' + (e["平均成本"] === "-" ? "-" : fmtCurrency(num(e["平均成本"]))) + '</td>' +
       '<td class="right">' + fmtCurrency(num(e["現價"])) + '</td>' +
-      '<td class="right">' + fmtCurrency(num(e["總持有成本"])) + '</td>' +
-      '<td class="right">' + fmtCurrency(num(e["總持倉市值"])) + '</td>' +
+      '<td class="right">' + fmtCurrency(cost) + '</td>' +
+      '<td class="right">' + fmtCurrency(mv) + '</td>' +
       '<td class="right ' + valCls(pnl) + '">' + fmtCurrency(pnl) + '</td>' +
       '<td class="right ' + valCls(pnl) + '">' + fmtPercent(num(e["未實現損益率"])) + '</td>' +
       '<td class="right ' + valCls(rpnl) + '">' + fmtCurrency(rpnl) + '</td>' +
-      '<td class="right">' + fmtCurrency(num(e["累計已實現股息"])) + '</td>' +
+      '<td class="right">' + fmtCurrency(div) + '</td>' +
       '</tr>';
   });
+
+  html += '<tr style="font-weight:700;border-top:2px solid var(--border)">' +
+    '<td colspan="4">合計</td>' +
+    '<td class="right">' + fmtCurrency(totals.cost) + '</td>' +
+    '<td class="right">' + fmtCurrency(totals.marketValue) + '</td>' +
+    '<td class="right ' + valCls(totals.pnl) + '">' + fmtCurrency(totals.pnl) + '</td>' +
+    '<td class="right">-</td>' +
+    '<td class="right ' + valCls(totals.rpnl) + '">' + fmtCurrency(totals.rpnl) + '</td>' +
+    '<td class="right">' + fmtCurrency(totals.dividend) + '</td>' +
+    '</tr>';
 
   html += '</table>';
   return html;
@@ -1154,6 +1189,7 @@ function renderMarketTable() {
   html += '</tr>';
 
   var pctCols = {"總損益率":1, "股票倉位":1, "現金倉位":1, "未實現總損益率":1, "已實現總損益率":1};
+  var sumCols = {"總資本":0,"總資產":0,"NAV":0,"總損益":0,"持倉成本":0,"持倉市值":0,"未實現總損益":0,"已實現總損益":0,"利息與股息":0,"什支":0,"可用現金":0,"定存":0};
 
   data.forEach(function(row) {
     html += '<tr>';
@@ -1172,9 +1208,23 @@ function renderMarketTable() {
       } else {
         html += '<td class="right">' + (v !== null && v !== undefined ? v : "") + '</td>';
       }
+      if (c in sumCols) sumCols[c] += num(v);
     });
     html += '</tr>';
   });
+
+  html += '<tr style="font-weight:700;border-top:2px solid var(--border)">';
+  cols.forEach(function(c) {
+    if (c === "市場") {
+      html += '<td>合計</td>';
+    } else if (c in sumCols) {
+      var n = sumCols[c];
+      html += '<td class="right ' + valCls(n) + '">' + fmtCurrency(n) + '</td>';
+    } else {
+      html += '<td class="right">-</td>';
+    }
+  });
+  html += '</tr>';
 
   html += '</table>';
   return html;
@@ -1182,22 +1232,44 @@ function renderMarketTable() {
 
 function renderAccountsTable(market) {
   var data = filterData(DATA.account_status, { currencyField: "幣別" });
-  var html = '<table><tr><th>銀行</th><th>帳戶</th><th>幣別</th><th class="right">總資本</th><th class="right">持倉成本</th><th class="right">已實現損益</th><th class="right">利息與股息</th><th class="right">什支</th><th class="right">定存</th><th class="right">可用現金</th></tr>';
+  var html = '<table><tr><th>銀行</th><th>帳戶</th><th>幣別</th><th class="right">總資本</th><th class="right">持倉成本</th><th class="right">已實現股票損益</th><th class="right">利息與股息</th><th class="right">什支</th><th class="right">定存</th><th class="right">可用現金</th></tr>';
+
+  var totals = { capital: 0, invested: 0, realized: 0, interest: 0, expense: 0, deposit: 0, cash: 0 };
 
   data.forEach(function(a) {
+    var realized = num(a["已實現股票損益"]);
+    totals.capital  += num(a["總資本"]);
+    totals.invested += num(a["持倉成本"]);
+    totals.realized += realized;
+    totals.interest += num(a["利息與股息"]);
+    totals.expense  += num(a["什支"]);
+    totals.deposit  += num(a["定存"]);
+    totals.cash     += num(a["可用現金"]);
+
     html += '<tr>' +
       '<td>' + a["銀行"] + '</td>' +
       '<td><span class="badge badge-account">' + a["帳戶名"] + '</span></td>' +
       '<td>' + a["幣別"] + '</td>' +
       '<td class="right">' + fmtCurrency(num(a["總資本"])) + '</td>' +
       '<td class="right">' + fmtCurrency(num(a["持倉成本"])) + '</td>' +
-      '<td class="right ' + valCls(num(a["已實現股票損益"])) + '">' + fmtCurrency(num(a["已實現股票損益"])) + '</td>' +
+      '<td class="right ' + valCls(realized) + '">' + fmtCurrency(realized) + '</td>' +
       '<td class="right">' + fmtCurrency(num(a["利息與股息"])) + '</td>' +
       '<td class="right">' + fmtCurrency(num(a["什支"])) + '</td>' +
       '<td class="right">' + fmtCurrency(num(a["定存"])) + '</td>' +
       '<td class="right">' + fmtCurrency(num(a["可用現金"])) + '</td>' +
       '</tr>';
   });
+
+  html += '<tr style="font-weight:700;border-top:2px solid var(--border)">' +
+    '<td colspan="3">合計</td>' +
+    '<td class="right">' + fmtCurrency(totals.capital) + '</td>' +
+    '<td class="right">' + fmtCurrency(totals.invested) + '</td>' +
+    '<td class="right ' + valCls(totals.realized) + '">' + fmtCurrency(totals.realized) + '</td>' +
+    '<td class="right">' + fmtCurrency(totals.interest) + '</td>' +
+    '<td class="right">' + fmtCurrency(totals.expense) + '</td>' +
+    '<td class="right">' + fmtCurrency(totals.deposit) + '</td>' +
+    '<td class="right">' + fmtCurrency(totals.cash) + '</td>' +
+    '</tr>';
 
   html += '</table>';
   return html;
