@@ -1182,14 +1182,14 @@ function renderMarketTable() {
   var cols = ["市場", "總資本", "總資產", "NAV", "總損益", "總損益率",
     "股票倉位", "現金倉位", "持倉成本", "持倉市值",
     "未實現總損益", "未實現總損益率", "已實現總損益", "已實現總損益率",
-    "利息與股息", "什支", "可用現金", "定存"];
+    "利息與股息", "可用現金", "定存"];
 
   var html = '<table><tr>';
   cols.forEach(function(c) { html += '<th>' + c + '</th>'; });
   html += '</tr>';
 
   var pctCols = {"總損益率":1, "股票倉位":1, "現金倉位":1, "未實現總損益率":1, "已實現總損益率":1};
-  var sumCols = {"總資本":0,"總資產":0,"NAV":0,"總損益":0,"持倉成本":0,"持倉市值":0,"未實現總損益":0,"已實現總損益":0,"利息與股息":0,"什支":0,"可用現金":0,"定存":0};
+  var sumCols = {"總資本":0,"總資產":0,"NAV":0,"總損益":0,"持倉成本":0,"持倉市值":0,"未實現總損益":0,"已實現總損益":0,"利息與股息":0,"可用現金":0,"定存":0};
 
   data.forEach(function(row) {
     html += '<tr>';
@@ -1232,9 +1232,9 @@ function renderMarketTable() {
 
 function renderAccountsTable(market) {
   var data = filterData(DATA.account_status, { currencyField: "幣別" });
-  var html = '<table><tr><th>銀行</th><th>帳戶</th><th>幣別</th><th class="right">總資本</th><th class="right">持倉成本</th><th class="right">已實現股票損益</th><th class="right">利息與股息</th><th class="right">什支</th><th class="right">定存</th><th class="right">可用現金</th></tr>';
+  var html = '<table><tr><th>銀行</th><th>帳戶</th><th>幣別</th><th class="right">總資本</th><th class="right">持倉成本</th><th class="right">已實現股票損益</th><th class="right">利息與股息</th><th class="right">定存</th><th class="right">可用現金</th></tr>';
 
-  var totals = { capital: 0, invested: 0, realized: 0, interest: 0, expense: 0, deposit: 0, cash: 0 };
+  var totals = { capital: 0, invested: 0, realized: 0, interest: 0, deposit: 0, cash: 0 };
 
   data.forEach(function(a) {
     var realized = num(a["已實現股票損益"]);
@@ -1242,7 +1242,6 @@ function renderAccountsTable(market) {
     totals.invested += num(a["持倉成本"]);
     totals.realized += realized;
     totals.interest += num(a["利息與股息"]);
-    totals.expense  += num(a["什支"]);
     totals.deposit  += num(a["定存"]);
     totals.cash     += num(a["可用現金"]);
 
@@ -1254,7 +1253,6 @@ function renderAccountsTable(market) {
       '<td class="right">' + fmtCurrency(num(a["持倉成本"])) + '</td>' +
       '<td class="right ' + valCls(realized) + '">' + fmtCurrency(realized) + '</td>' +
       '<td class="right">' + fmtCurrency(num(a["利息與股息"])) + '</td>' +
-      '<td class="right">' + fmtCurrency(num(a["什支"])) + '</td>' +
       '<td class="right">' + fmtCurrency(num(a["定存"])) + '</td>' +
       '<td class="right">' + fmtCurrency(num(a["可用現金"])) + '</td>' +
       '</tr>';
@@ -1266,7 +1264,6 @@ function renderAccountsTable(market) {
     '<td class="right">' + fmtCurrency(totals.invested) + '</td>' +
     '<td class="right ' + valCls(totals.realized) + '">' + fmtCurrency(totals.realized) + '</td>' +
     '<td class="right">' + fmtCurrency(totals.interest) + '</td>' +
-    '<td class="right">' + fmtCurrency(totals.expense) + '</td>' +
     '<td class="right">' + fmtCurrency(totals.deposit) + '</td>' +
     '<td class="right">' + fmtCurrency(totals.cash) + '</td>' +
     '</tr>';
