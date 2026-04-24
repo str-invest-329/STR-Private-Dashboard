@@ -280,6 +280,80 @@
       font-size: 0.72rem;
       color: var(--gray);
     }
+
+    /* === Date Filter === */
+    .filter-bar input[type="date"] {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 0.82rem;
+      background: white;
+      cursor: pointer;
+      color: #212529;
+    }
+    .date-filter-badge {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      background: #eef6fb;
+      border: 1px solid #add5e8;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 0.8rem;
+      color: #1a5a6e;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .date-filter-badge .badge-note {
+      font-weight: 400;
+      color: var(--gray);
+      font-size: 0.76rem;
+    }
+
+    /* === Mobile Responsive (iPhone ~402px) === */
+    @media (max-width: 480px) {
+      body { font-size: 13px; }
+      .topbar { padding: 10px 16px; }
+      .topbar h1 { font-size: 1rem; }
+      .topbar .meta { font-size: 0.72rem; }
+      .container { padding: 10px; }
+      .filter-bar {
+        padding: 10px 14px;
+        gap: 10px;
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .filter-group { flex-direction: row; align-items: center; gap: 8px; }
+      .filter-group label { min-width: 36px; font-size: 0.72rem; }
+      .filter-bar select { flex: 1; font-size: 0.8rem; padding: 8px 10px; }
+      .filter-actions { margin-left: 0; justify-content: stretch; }
+      .filter-actions button { flex: 1; padding: 10px 12px; font-size: 0.82rem; }
+      .kpi-grid { gap: 8px; margin-bottom: 12px; }
+      .kpi-card { padding: 14px 16px; }
+      .kpi-card .value { font-size: 1.35rem; }
+      .kpi-card .label { font-size: 0.74rem; }
+      .kpi-card .sub { font-size: 0.76rem; }
+      .charts-grid { gap: 8px; margin-bottom: 12px; }
+      .chart-card { padding: 14px 16px; }
+      .chart-card h3 { font-size: 0.82rem; margin-bottom: 8px; }
+      .chart-card canvas { max-height: 250px; }
+      .tabs { padding: 0 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+      .tabs::-webkit-scrollbar { display: none; }
+      .tab { padding: 10px 12px; font-size: 0.78rem; white-space: nowrap; flex-shrink: 0; }
+      .tab-content { padding: 10px 12px; }
+      table { font-size: 0.76rem; }
+      th { padding: 6px 8px; font-size: 0.72rem; }
+      td { padding: 6px 8px; }
+      .event-filter-bar { flex-wrap: wrap; padding: 8px 12px; gap: 6px; font-size: 0.78rem; }
+      .event-filter-bar select { font-size: 0.78rem; padding: 4px 6px; }
+      .event-count { font-size: 0.72rem; }
+      .event-pager button { font-size: 0.72rem; padding: 2px 6px; }
+      .table-card + .table-card, .table-card[style*="margin-top"] { margin-top: 12px !important; }
+      .position-bar-equity, .position-bar-cash { font-size: 0.65rem; }
+      .position-bar-labels { font-size: 0.68rem; }
+      [data-tooltip]:hover::after, [data-tooltip]:hover::before { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -311,6 +385,14 @@
         <option value="ALL">全部標的</option>
       </select>
     </div>
+    <div class="filter-group">
+      <label>起日</label>
+      <input type="date" id="dateFrom" value="" onchange="onDateFilterChange()">
+    </div>
+    <div class="filter-group">
+      <label>訖日</label>
+      <input type="date" id="dateTo" onchange="onDateFilterChange()">
+    </div>
     <div class="filter-actions">
       <button onclick="refreshData()">更新資料</button>
       <button class="btn-secondary" onclick="resetFilters()">重置</button>
@@ -318,6 +400,10 @@
   </div>
 
   <!-- 模塊 1：KPI Cards（可點擊切換圖表）-->
+  <div id="dateFilterBadge" style="display:none" class="date-filter-badge">
+    📅 期間績效模式：<span id="dateFilterLabel"></span>
+    <span class="badge-note">（總資本、已實現損益依期間重算；未實現損益為即時值）</span>
+  </div>
   <div class="kpi-grid" id="kpiGrid">
     <div class="loading">載入中...</div>
   </div>
@@ -386,6 +472,13 @@ var API_URL = "https://script.google.com/macros/s/AKfycbzthsshqCiQ_365RjtPJN1hfu
 var DATA = null;
 var currentTab = "market";
 
+// ===== 日期篩選 =====
+var DATE_FROM = "";   // 預設留空（不設起日）
+var DATE_TO = "";
+var cachedAllTradeEvents = null;
+var cachedAllDepositEvents = null;
+var cachedAllAccountEvents = null;
+
 // ===== 顏色 =====
 var COLORS = ["#2B2D42", "#8D99AE", "#EF233C", "#D90429", "#3d4060", "#a8b2c0", "#ff4d5e", "#1a1b2e", "#c0c8d4"];
 var KPI_BORDERS = ["#2B2D42", "#2B2D42", "#8D99AE", "#2B8A5E", "#EF233C", "#D90429"];
@@ -394,9 +487,15 @@ var KPI_BORDERS = ["#2B2D42", "#2B2D42", "#8D99AE", "#2B8A5E", "#EF233C", "#D904
 
 // ===== 載入資料 =====
 async function loadData() {
+  // 清除日期篩選的事件快取（資料重整時需重新載入）
+  cachedAllTradeEvents = null;
+  cachedAllDepositEvents = null;
+  cachedAllAccountEvents = null;
+
   if (!API_URL) {
     // Demo mode: 使用內嵌測試資料
     DATA = getDemoData();
+    if (DATE_FROM) await loadAllEventsForDateFilter();
     render();
     return;
   }
@@ -404,9 +503,357 @@ async function loadData() {
   try {
     var res = await fetch(API_URL + "?action=all");
     DATA = await res.json();
+    // 有起日時，同步載入事件資料（避免首次 render 時期間指標空白）
+    if (DATE_FROM) await loadAllEventsForDateFilter();
     render();
   } catch (err) {
     document.getElementById("kpiGrid").innerHTML = '<div class="error">載入失敗: ' + err.message + '</div>';
+  }
+}
+
+// ===== 載入所有事件資料（供日期篩選使用）=====
+async function loadAllEventsForDateFilter() {
+  if (!API_URL) {
+    cachedAllTradeEvents  = getDemoEventData("trade_events");
+    cachedAllDepositEvents = getDemoEventData("deposit_events");
+    cachedAllAccountEvents = getDemoEventData("account_events");
+    return;
+  }
+  try {
+    var results = await Promise.all([
+      fetch(API_URL + "?action=trades").then(function(r) { return r.json(); }),
+      fetch(API_URL + "?action=deposit_events").then(function(r) { return r.json(); }),
+      fetch(API_URL + "?action=account_events").then(function(r) { return r.json(); })
+    ]);
+    cachedAllTradeEvents  = results[0].trade_events   || [];
+    cachedAllDepositEvents = results[1].deposit_events || [];
+    cachedAllAccountEvents = results[2].account_events || [];
+  } catch(e) {
+    cachedAllTradeEvents  = [];
+    cachedAllDepositEvents = [];
+    cachedAllAccountEvents = [];
+  }
+}
+
+// ===== 日期篩選變更 =====
+async function onDateFilterChange() {
+  DATE_FROM = document.getElementById("dateFrom").value;
+  DATE_TO   = document.getElementById("dateTo").value;
+
+  if (DATE_FROM && !cachedAllTradeEvents) {
+    document.getElementById("kpiGrid").innerHTML = '<div class="loading">⏳ 載入期間事件資料中...</div>';
+    await loadAllEventsForDateFilter();
+  }
+
+  render();
+}
+
+// ===== 期間股息（配息）by Ticker =====
+function computePeriodDividendsByTicker(f, fromDate, toDate) {
+  var result = {};
+  if (!cachedAllAccountEvents) return result;
+
+  function matchMarketCurrency(bid) {
+    if (!f.market || f.market === "ALL") return true;
+    return (f.market === "美股") ? (bid === "USD") : (bid === "TWD");
+  }
+  var investKeys = buildInvestAccountKeys(f.market);
+  function matchAccount(r) {
+    if (f.account !== "ALL") return (r["銀行"] + "-" + r["帳戶名"]) === f.account;
+    if (investKeys) return !!investKeys[(r["銀行"]||"") + "-" + (r["帳戶名"]||"")];
+    return true;
+  }
+
+  cachedAllAccountEvents.forEach(function(ae) {
+    if ((ae["事件類型"]||"") !== "配息") return;
+    var dt = ae["日期"] ? new Date(ae["日期"]) : null;
+    if (!dt || dt < fromDate || dt > toDate) return;
+    if (!matchMarketCurrency(ae["幣別"])) return;
+    if (!matchAccount(ae)) return;
+    var ticker = ae["Ticker"] || "";
+    if (!ticker) return;
+    result[ticker] = (result[ticker] || 0) + num(ae["金額"]);
+  });
+
+  return result;
+}
+
+// ===== 期間已實現損益：同時回傳 byTicker 與 byAcctTicker =====
+function computeFIFOPeriodPnLMaps(f, fromDate, toDate) {
+  var result = { byTicker: {}, byAcctTicker: {} };
+  if (!cachedAllTradeEvents || cachedAllTradeEvents.length === 0) return result;
+
+  function matchMarket(bid) {
+    if (!f.market || f.market === "ALL") return true;
+    return (f.market === "美股") ? (bid === "USD") : (bid === "TWD");
+  }
+  var investKeys = buildInvestAccountKeys(f.market);
+  function matchAccount(r) {
+    if (f.account !== "ALL") return (r["銀行"] + "-" + r["帳戶名"]) === f.account;
+    if (investKeys) return !!investKeys[(r["銀行"]||"") + "-" + (r["帳戶名"]||"")];
+    return true;
+  }
+
+  var trades = cachedAllTradeEvents.slice().sort(function(a, b) {
+    return new Date(a["日期"]) - new Date(b["日期"]);
+  });
+  var avgPos = {};
+
+  trades.forEach(function(t) {
+    if (!matchMarket(t["幣別"])) return;
+    if (!matchAccount(t)) return;
+
+    var ticker    = t["Ticker"];
+    var dir       = t["方向"];
+    var shares    = num(t["股數"]);
+    var amount    = num(t["成交金額"]);
+    var newShares = num(t["分割/反分割後新股"]);
+    var dt        = t["日期"] ? new Date(t["日期"]) : null;
+    var acctKey   = (t["銀行"] || "") + "-" + (t["帳戶名"] || "");
+    var queueKey  = acctKey + "|" + ticker;
+
+    if (!ticker || !dt) return;
+    if (!avgPos[queueKey]) avgPos[queueKey] = { shares: 0, totalCost: 0 };
+    var pos = avgPos[queueKey];
+
+    if (dir === "買" && shares > 0) {
+      pos.shares    += shares;
+      pos.totalCost += amount;
+    } else if (dir === "賣" && shares > 0) {
+      var avgCostPerShare = pos.shares > 0 ? pos.totalCost / pos.shares : 0;
+      var costBasis = avgCostPerShare * shares;
+      pos.shares    -= shares;
+      pos.totalCost  = avgCostPerShare * pos.shares;
+      if (dt >= fromDate && dt <= toDate) {
+        var pnl = amount - costBasis;
+        result.byTicker[ticker] = (result.byTicker[ticker] || 0) + pnl;
+        result.byAcctTicker[queueKey] = (result.byAcctTicker[queueKey] || 0) + pnl;
+      }
+    } else if (newShares > 0 && dir !== "買" && dir !== "賣") {
+      if (pos.shares > 0 && newShares !== pos.shares) pos.shares = newShares;
+    }
+  });
+
+  return result;
+}
+
+// ===== 期間已實現損益（市場/帳戶層級，加權平均成本法）=====
+function computeFIFORealizedPnL(f, fromDate, toDate, includedKeys) {
+  if (!cachedAllTradeEvents || cachedAllTradeEvents.length === 0) return 0;
+
+  function matchMarket(bid) {
+    if (f.market === "ALL") return true;
+    return (f.market === "美股") ? (bid === "USD") : (bid === "TWD");
+  }
+  function matchAccount(r) {
+    if (f.account !== "ALL") return (r["銀行"] + "-" + r["帳戶名"]) === f.account;
+    if (includedKeys) return !!includedKeys[(r["銀行"]||"") + "-" + (r["帳戶名"]||"")];
+    return true;
+  }
+
+  var trades = cachedAllTradeEvents.slice().sort(function(a, b) {
+    return new Date(a["日期"]) - new Date(b["日期"]);
+  });
+  var avgPos    = {};
+  var periodPnL = 0;
+
+  trades.forEach(function(t) {
+    if (!matchMarket(t["幣別"])) return;
+    if (!matchAccount(t)) return;
+
+    var ticker    = t["Ticker"];
+    var dir       = t["方向"];
+    var shares    = num(t["股數"]);
+    var amount    = num(t["成交金額"]);
+    var newShares = num(t["分割/反分割後新股"]);
+    var dt        = t["日期"] ? new Date(t["日期"]) : null;
+    var acctKey   = (t["銀行"] || "") + "-" + (t["帳戶名"] || "");
+    var queueKey  = acctKey + "|" + ticker;
+
+    if (!ticker || !dt) return;
+    if (!avgPos[queueKey]) avgPos[queueKey] = { shares: 0, totalCost: 0 };
+    var pos = avgPos[queueKey];
+
+    if (dir === "買" && shares > 0) {
+      pos.shares    += shares;
+      pos.totalCost += amount;
+    } else if (dir === "賣" && shares > 0) {
+      var avgCostPerShare = pos.shares > 0 ? pos.totalCost / pos.shares : 0;
+      var costBasis = avgCostPerShare * shares;
+      pos.shares    -= shares;
+      pos.totalCost  = avgCostPerShare * pos.shares;
+      if (dt >= fromDate && dt <= toDate) periodPnL += (amount - costBasis);
+    } else if (newShares > 0 && dir !== "買" && dir !== "賣") {
+      if (pos.shares > 0 && newShares !== pos.shares) pos.shares = newShares;
+    }
+  });
+
+  return periodPnL;
+}
+
+// ===== 取得投資帳戶 key set { "銀行-帳戶名": true } =====
+function buildInvestAccountKeys(market) {
+  if (!market || market === "ALL") return null;
+  if (!DATA || !DATA.account_config || DATA.account_config.length === 0) return null;
+  var mktCurrency = (market === "美股") ? "USD" : "TWD";
+  var keys = {};
+  DATA.account_config.forEach(function(c) {
+    if (c["是否投資帳戶"] && c["幣別"] === mktCurrency) {
+      keys[(c["銀行"]||"") + "-" + (c["帳戶名"]||"")] = true;
+    }
+  });
+  return Object.keys(keys).length > 0 ? keys : null;
+}
+
+// ===== 找出市場實際包含的帳戶集合（排除非投資帳戶）=====
+function buildIncludedAccountKeys(f, overallRealizedTotal) {
+  if (f.account !== "ALL") {
+    var result = {}; result[f.account] = true; return result;
+  }
+  if (!f.market || f.market === "ALL" || !DATA || !DATA.account_status) return null;
+
+  var mktCurrency = (f.market === "美股") ? "USD" : "TWD";
+
+  var investSet = {};
+  if (DATA.account_config && DATA.account_config.length > 0) {
+    DATA.account_config.forEach(function(c) {
+      if (c["是否投資帳戶"] && c["幣別"] === mktCurrency) {
+        investSet[c["銀行"] + "|" + c["帳戶名"] + "|" + c["幣別"]] = true;
+      }
+    });
+  }
+  var hasInvestConfig = Object.keys(investSet).length > 0;
+
+  var remaining = [];
+  (DATA.account_status || []).forEach(function(a) {
+    if (a["幣別"] !== mktCurrency) return;
+    if (hasInvestConfig && !investSet[a["銀行"] + "|" + a["帳戶名"] + "|" + a["幣別"]]) return;
+    remaining.push({ key: (a["銀行"]||"") + "-" + (a["帳戶名"]||""), realized: num(a["已實現總損益"]) });
+  });
+
+  var sum = remaining.reduce(function(s, c) { return s + c.realized; }, 0);
+  if (Math.abs(sum - overallRealizedTotal) < 0.5) {
+    var all = {}; remaining.forEach(function(c) { all[c.key] = true; }); return all;
+  }
+
+  for (var iter = 0; iter < 20; iter++) {
+    var bestIdx = -1, bestDist = Math.abs(sum - overallRealizedTotal);
+    for (var j = 0; j < remaining.length; j++) {
+      var dist = Math.abs((sum - remaining[j].realized) - overallRealizedTotal);
+      if (dist < bestDist) { bestDist = dist; bestIdx = j; }
+    }
+    if (bestIdx < 0) break;
+    sum -= remaining[bestIdx].realized;
+    remaining.splice(bestIdx, 1);
+    if (Math.abs(sum - overallRealizedTotal) < 0.5) break;
+  }
+
+  var found = {}; remaining.forEach(function(c) { found[c.key] = true; }); return found;
+}
+
+// ===== 期間績效計算 =====
+function computePeriodMetrics(f) {
+  if (!DATE_FROM) return null;
+  if (!cachedAllTradeEvents && !cachedAllAccountEvents) return null;
+
+  var overallCapital, overallRealizedTotal;
+
+  if (f.account !== "ALL") {
+    var acctCurrency = f.currency
+      || (f.market === "美股" ? "USD" : f.market === "台股" ? "TWD" : null);
+    var acct = (DATA.account_status || []).find(function(a) {
+      var keyMatch = (a["銀行"] + "-" + a["帳戶名"]) === f.account;
+      if (!keyMatch) return false;
+      if (acctCurrency) return a["幣別"] === acctCurrency;
+      return true;
+    });
+    if (!acct) return null;
+    overallCapital       = num(acct["總資本"]);
+    overallRealizedTotal = num(acct["已實現總損益"]);
+  } else {
+    var row = (DATA.market_status || []).find(function(r) { return r["市場"] === f.market; });
+    if (!row) return null;
+    overallCapital       = num(row["總資本"]);
+    overallRealizedTotal = num(row["已實現總損益"]);
+  }
+
+  var includedAcctKeys = buildIncludedAccountKeys(f, overallRealizedTotal);
+
+  var fromDate = new Date(DATE_FROM + "T00:00:00+08:00");
+  var toDate   = DATE_TO ? new Date(DATE_TO + "T23:59:59+08:00") : new Date();
+
+  function inPeriod(d) { return d && d >= fromDate && d <= toDate; }
+  function matchMarketCurrency(bid) {
+    if (!f.market || f.market === "ALL") return true;
+    return (f.market === "美股") ? (bid === "USD") : (bid === "TWD");
+  }
+  function matchAccount(r) {
+    var key = (r["銀行"]||"") + "-" + (r["帳戶名"]||"");
+    if (includedAcctKeys) return !!includedAcctKeys[key];
+    return true;
+  }
+
+  if (f.account === "ALL" && f.market && f.market !== "ALL") {
+    var mktCurrency = (f.market === "美股") ? "USD" : "TWD";
+    overallCapital = 0;
+    (DATA.account_status || []).forEach(function(a) {
+      if (a["幣別"] !== mktCurrency) return;
+      var key = a["銀行"] + "-" + a["帳戶名"];
+      if (includedAcctKeys && !includedAcctKeys[key]) return;
+      overallCapital += num(a["總資本"]);
+    });
+    if (cachedAllAccountEvents) {
+      var netXferIn = 0;
+      cachedAllAccountEvents.forEach(function(ae) {
+        if (!matchMarketCurrency(ae["幣別"])) return;
+        if (!matchAccount(ae)) return;
+        if ((ae["事件類型"]||"") === "轉帳") netXferIn += num(ae["金額"]);
+      });
+      overallCapital -= netXferIn;
+    }
+  }
+
+  var periodInterest  = 0;
+  var INJECTION_TYPES = { "股本": 1, "換匯": 1, "轉帳": 1 };
+  var INTEREST_TYPES  = { "利息": 1, "配息": 1 };
+
+  if (cachedAllAccountEvents) {
+    cachedAllAccountEvents.forEach(function(ae) {
+      var dt = ae["日期"] ? new Date(ae["日期"]) : null;
+      if (!inPeriod(dt)) return;
+      if (!matchMarketCurrency(ae["幣別"])) return;
+      if (!matchAccount(ae)) return;
+      var type = ae["事件類型"] || "";
+      var amt  = num(ae["金額"]);
+      if (INTEREST_TYPES[type]) periodInterest += amt;
+    });
+  }
+
+  var periodEquityPnL    = computeFIFORealizedPnL(f, fromDate, toDate, includedAcctKeys);
+  var periodRealizedTotal = periodEquityPnL + periodInterest;
+  var periodCapital      = overallCapital + overallRealizedTotal - periodRealizedTotal;
+  var periodRealizedRate = periodCapital > 0 ? periodRealizedTotal / periodCapital : 0;
+
+  return {
+    capital:        periodCapital,
+    realizedTotal:  periodRealizedTotal,
+    realizedEquity: periodEquityPnL,
+    interest:       periodInterest,
+    realizedRate:   periodRealizedRate
+  };
+}
+
+// ===== 更新日期篩選標示 =====
+function updateDateFilterBadge() {
+  var badge = document.getElementById("dateFilterBadge");
+  var label = document.getElementById("dateFilterLabel");
+  if (!badge || !label) return;
+  if (DATE_FROM) {
+    var toStr = DATE_TO ? DATE_TO.replace(/-/g, "/") : "今日";
+    label.textContent = DATE_FROM.replace(/-/g, "/") + " ～ " + toStr;
+    badge.style.display = "flex";
+  } else {
+    badge.style.display = "none";
   }
 }
 
@@ -424,11 +871,23 @@ function populateAccountFilter() {
   select.innerHTML = '<option value="ALL">全部帳戶</option>';
 
   if (!DATA || !DATA.account_status) return;
+
+  // 建立投資帳戶快查集（只列出 是否投資帳戶=true 的帳戶）
+  var investSet = {};
+  if (DATA.account_config) {
+    DATA.account_config.forEach(function(c) {
+      if (c["是否投資帳戶"]) investSet[c["銀行"] + "|" + c["帳戶名"] + "|" + c["幣別"]] = true;
+    });
+  }
+
   var seen = {};
   DATA.account_status.forEach(function(a) {
     if (market !== "ALL") {
       var acctMarket = (a["幣別"] === "USD") ? "美股" : "台股";
       if (acctMarket !== market) return;
+    }
+    if (Object.keys(investSet).length > 0) {
+      if (!investSet[a["銀行"] + "|" + a["帳戶名"] + "|" + a["幣別"]]) return;
     }
     var label = a["銀行"] + "-" + a["帳戶名"];
     if (seen[label]) return;
@@ -438,7 +897,6 @@ function populateAccountFilter() {
     opt.textContent = label;
     select.appendChild(opt);
   });
-  // 保留之前的選擇（如果還在列表中）
   if (select.querySelector('option[value="' + current + '"]')) select.value = current;
 }
 
@@ -464,7 +922,12 @@ function resetFilters() {
   document.getElementById("marketFilter").value = "美股";
   document.getElementById("accountFilter").value = "ALL";
   document.getElementById("tickerFilter").value = "ALL";
-  document.getElementById("pieGroupBy").value = "stock";
+  var pgb = document.getElementById("pieGroupBy");
+  if (pgb) pgb.value = "stock";
+  document.getElementById("dateFrom").value = "";
+  document.getElementById("dateTo").value = "";
+  DATE_FROM = "";
+  DATE_TO = "";
   onMarketChange();
 }
 
@@ -481,6 +944,7 @@ function render() {
   if (!DATA) return;
   populateAccountFilter();
   populateTickerFilter();
+  updateDateFilterBadge();
   renderKPI();
   renderCharts();
   renderTable();
@@ -547,29 +1011,43 @@ function buildMarketKPI(f) {
   var row = (DATA.market_status || []).find(function(r) { return r["市場"] === f.market; });
   if (!row) return [];
 
-  var capital = num(row["總資本"]);
-  var totalAssets = num(row["總資產"]);
-  var nav = num(row["NAV"]);
-  var totalPnL = num(row["總損益"]);
-  var totalReturn = num(row["總損益率"]);
-  var unrealTotalPnL = num(row["未實現總損益"]);
+  var capital         = num(row["總資本"]);
+  var totalAssets     = num(row["總資產"]);
+  var nav             = num(row["NAV"]);
+  var totalPnL        = num(row["總損益"]);
+  var totalReturn     = num(row["總損益率"]);
+  var unrealTotalPnL  = num(row["未實現總損益"]);
   var unrealTotalRate = num(row["未實現總損益率"]);
-  var realTotalPnL = num(row["已實現總損益"]);
-  var realTotalRate = num(row["已實現總損益率"]);
-  var eqWeight = num(row["股票倉位"]);
-  var cashWeight = num(row["現金倉位"]);
-  var availCash = num(row["可用現金"]);
-  var deposit = num(row["定存"]);
-  var realizedEquityPnL = num(row["已實現股票損益"]);
-  var interest = num(row["利息與股息"]);
+  var realTotalPnL    = num(row["已實現總損益"]);
+  var realTotalRate   = num(row["已實現總損益率"]);
+  var eqWeight        = num(row["股票倉位"]);
+  var cashWeight      = num(row["現金倉位"]);
+  var availCash       = num(row["可用現金"]);
+  var deposit         = num(row["定存"]);
+
+  // 日期篩選：若有起訖日，重算期間相關指標
+  var pm = computePeriodMetrics(f);
+  var capitalSub = "外部注資合計";
+  var capitalTip = "總資本 = 股本 + 換匯 + 轉帳";
+  if (pm) {
+    capital         = pm.capital;
+    realTotalPnL    = pm.realizedTotal;
+    realTotalRate   = pm.realizedRate;
+    totalPnL        = realTotalPnL + unrealTotalPnL;
+    totalReturn     = capital > 0 ? totalPnL / capital : 0;
+    unrealTotalRate = capital > 0 ? unrealTotalPnL / capital : 0;
+    var holdingsCost = num(row["持倉成本"]);
+    capitalSub = holdingsCost > 0 ? "投入資金 " + fmtCurrency(holdingsCost) : "外部注資合計";
+    capitalTip = "總資本 = 期前資產 + 期間注資（期前損益已還原）；投入資金 = 當前持倉買入成本";
+  }
 
   return [
-    { label: "總資本", value: fmtCurrency(capital), sub: "外部注資合計", border: KPI_BORDERS[0], chartView: "allocation", tooltip: "總資本 = 股本 + 換匯 + 轉帳" },
+    { label: "總資本", value: fmtCurrency(capital), sub: capitalSub, border: KPI_BORDERS[0], chartView: "allocation", tooltip: capitalTip },
     { label: "總資產", value: fmtCurrency(totalAssets), sub: "NAV " + fmtCurrency(nav), border: KPI_BORDERS[1], chartView: "allocation", tooltip: "總資產 = 持倉市值 + 可用現金 + 定存", subTooltip: "NAV = 總資產 - 總負債" },
     { label: "倉位配置", bar: { equity: eqWeight, cash: cashWeight }, border: KPI_BORDERS[2], chartView: "allocation", tooltip: "股票倉位 + 現金倉位 = 100%" },
     { spacer: true },
-    { label: "已實現總損益", value: fmtCurrency(realTotalPnL), sub: "已實現總損益率 " + fmtPercent(realTotalRate), border: KPI_BORDERS[5], cls: valCls(realTotalPnL), chartView: "realized_detail", subTooltip: "已實現總損益率 = 已實現總損益 / 總資本" },
-    { label: "未實現總損益", value: fmtCurrency(unrealTotalPnL), sub: "未實現總損益率 " + fmtPercent(unrealTotalRate), border: KPI_BORDERS[4], cls: valCls(unrealTotalPnL), chartView: "unrealized", tooltip: "未實現總損益 = 持倉市值 - 持倉成本", subTooltip: "未實現總損益率 = 未實現總損益 / 總資本" },
+    { label: "已實現總損益", value: fmtCurrency(realTotalPnL), sub: (pm ? "期間" : "") + "已實現總損益率 " + fmtPercent(realTotalRate), border: KPI_BORDERS[5], cls: valCls(realTotalPnL), chartView: "realized_detail", subTooltip: "已實現總損益率 = 已實現總損益 / 總資本" },
+    { label: "未實現總損益", value: fmtCurrency(unrealTotalPnL), sub: "未實現總損益率 " + fmtPercent(unrealTotalRate), border: KPI_BORDERS[4], cls: valCls(unrealTotalPnL), chartView: "unrealized", tooltip: "未實現總損益 = 持倉市值 - 持倉成本", subTooltip: pm ? "未實現總損益率 = 未實現總損益 / 期間總資本" : "未實現總損益率 = 未實現總損益 / 總資本" },
     { label: "總損益", value: fmtCurrency(totalPnL), sub: "總損益率 " + fmtPercent(totalReturn), border: KPI_BORDERS[3], cls: valCls(totalPnL), chartView: "pnl_breakdown", tooltip: "總損益 = 已實現總損益 + 未實現總損益", subTooltip: "總損益率 = 總損益 / 總資本" },
     { label: "可用現金", value: fmtCurrency(availCash), sub: "定存 " + fmtCurrency(deposit), border: KPI_BORDERS[1], chartView: "allocation", tooltip: "可用現金 = 帳戶可動用現金（不含定存）", subTooltip: "定存 = 目前定存金額" }
   ];
@@ -581,29 +1059,43 @@ function buildAccountKPI(f) {
   });
   if (!acct) return buildMarketKPI(f);
 
-  var capital = num(acct["總資本"]);
-  var totalAssets = num(acct["總資產"]);
-  var nav = num(acct["NAV"]);
-  var totalPnL = num(acct["總損益"]);
-  var totalReturn = num(acct["總損益率"]);
-  var unrealTotalPnL = num(acct["未實現總損益"]);
+  var capital         = num(acct["總資本"]);
+  var totalAssets     = num(acct["總資產"]);
+  var nav             = num(acct["NAV"]);
+  var totalPnL        = num(acct["總損益"]);
+  var totalReturn     = num(acct["總損益率"]);
+  var unrealTotalPnL  = num(acct["未實現總損益"]);
   var unrealTotalRate = num(acct["未實現總損益率"]);
-  var realTotalPnL = num(acct["已實現總損益"]);
-  var realTotalRate = num(acct["已實現總損益率"]);
-  var eqWeight = num(acct["股票倉位"]);
-  var cashWeight = num(acct["現金倉位"]);
-  var availCash = num(acct["可用現金"]);
-  var deposit = num(acct["定存"]);
-  var realizedEquityPnL = num(acct["已實現股票損益"]);
-  var interest = num(acct["利息與股息"]);
+  var realTotalPnL    = num(acct["已實現總損益"]);
+  var realTotalRate   = num(acct["已實現總損益率"]);
+  var eqWeight        = num(acct["股票倉位"]);
+  var cashWeight      = num(acct["現金倉位"]);
+  var availCash       = num(acct["可用現金"]);
+  var deposit         = num(acct["定存"]);
+
+  // 日期篩選：若有起訖日，重算期間相關指標
+  var pm = computePeriodMetrics(f);
+  var capitalSub = f.account + " " + acct["幣別"];
+  var capitalTip = "總資本 = 股本 + 換匯 + 轉帳";
+  if (pm) {
+    capital         = pm.capital;
+    realTotalPnL    = pm.realizedTotal;
+    realTotalRate   = pm.realizedRate;
+    totalPnL        = realTotalPnL + unrealTotalPnL;
+    totalReturn     = capital > 0 ? totalPnL / capital : 0;
+    unrealTotalRate = capital > 0 ? unrealTotalPnL / capital : 0;
+    var holdingsCost = num(acct["持倉成本"]);
+    capitalSub = f.account + (holdingsCost > 0 ? "｜投入資金 " + fmtCurrency(holdingsCost) : "");
+    capitalTip = "總資本 = 期前資產 + 期間注資（期前損益已還原）；投入資金 = 當前持倉買入成本";
+  }
 
   return [
-    { label: "總資本", value: fmtCurrency(capital), sub: f.account + " " + acct["幣別"], border: KPI_BORDERS[0], chartView: "allocation", tooltip: "總資本 = 股本 + 換匯 + 轉帳" },
+    { label: "總資本", value: fmtCurrency(capital), sub: capitalSub, border: KPI_BORDERS[0], chartView: "allocation", tooltip: capitalTip },
     { label: "總資產", value: fmtCurrency(totalAssets), sub: "NAV " + fmtCurrency(nav), border: KPI_BORDERS[1], chartView: "allocation", tooltip: "總資產 = 持倉市值 + 可用現金 + 定存", subTooltip: "NAV = 總資產 - 總負債" },
     { label: "倉位配置", bar: { equity: eqWeight, cash: cashWeight }, border: KPI_BORDERS[2], chartView: "allocation", tooltip: "股票倉位 + 現金倉位 = 100%" },
     { spacer: true },
-    { label: "已實現總損益", value: fmtCurrency(realTotalPnL), sub: "已實現總損益率 " + fmtPercent(realTotalRate), border: KPI_BORDERS[5], cls: valCls(realTotalPnL), chartView: "realized_detail", subTooltip: "已實現總損益率 = 已實現總損益 / 總資本" },
-    { label: "未實現總損益", value: fmtCurrency(unrealTotalPnL), sub: "未實現總損益率 " + fmtPercent(unrealTotalRate), border: KPI_BORDERS[4], cls: valCls(unrealTotalPnL), chartView: "unrealized", tooltip: "未實現總損益 = 持倉市值 - 持倉成本", subTooltip: "未實現總損益率 = 未實現總損益 / 總資本" },
+    { label: "已實現總損益", value: fmtCurrency(realTotalPnL), sub: (pm ? "期間" : "") + "已實現總損益率 " + fmtPercent(realTotalRate), border: KPI_BORDERS[5], cls: valCls(realTotalPnL), chartView: "realized_detail", subTooltip: "已實現總損益率 = 已實現總損益 / 總資本" },
+    { label: "未實現總損益", value: fmtCurrency(unrealTotalPnL), sub: "未實現總損益率 " + fmtPercent(unrealTotalRate), border: KPI_BORDERS[4], cls: valCls(unrealTotalPnL), chartView: "unrealized", tooltip: "未實現總損益 = 持倉市值 - 持倉成本", subTooltip: pm ? "未實現總損益率 = 未實現總損益 / 期間總資本" : "未實現總損益率 = 未實現總損益 / 總資本" },
     { label: "總損益", value: fmtCurrency(totalPnL), sub: "總損益率 " + fmtPercent(totalReturn), border: KPI_BORDERS[3], cls: valCls(totalPnL), chartView: "pnl_breakdown", tooltip: "總損益 = 已實現總損益 + 未實現總損益", subTooltip: "總損益率 = 總損益 / 總資本" },
     { label: "可用現金", value: fmtCurrency(availCash), sub: "定存 " + fmtCurrency(deposit), border: KPI_BORDERS[1], chartView: "allocation", tooltip: "可用現金 = 帳戶可動用現金（不含定存）", subTooltip: "定存 = 目前定存金額" }
   ];
@@ -1091,23 +1583,44 @@ function renderTable() {
 }
 
 function renderHoldingsTable(market) {
+  var f    = getFilters();
   var data = filterData(DATA.equity_by_account);
-  var html = '<table><tr><th>銀行</th><th>帳戶</th><th>標的</th><th class="right">股數</th><th class="right">平均成本</th><th class="right">現價</th><th class="right">市值</th><th class="right">未實現損益</th><th class="right">報酬率</th><th class="right">占比</th></tr>';
+  var hasPeriod = !!DATE_FROM;
 
-  var totals = { marketValue: 0, pnl: 0 };
+  var pnlMaps = null;
+  if (hasPeriod && cachedAllTradeEvents) {
+    var fromDate = new Date(DATE_FROM + "T00:00:00+08:00");
+    var toDate   = DATE_TO ? new Date(DATE_TO + "T23:59:59+08:00") : new Date();
+    pnlMaps = computeFIFOPeriodPnLMaps(f, fromDate, toDate);
+  }
+
+  var extraCol = hasPeriod ? '<th class="right">期間已實現損益</th>' : '';
+  var html = '<table><tr><th>銀行</th><th>帳戶</th><th>標的</th>' +
+    '<th class="right">股數</th><th class="right">平均成本</th><th class="right">現價</th>' +
+    '<th class="right">市值</th><th class="right">未實現損益</th>' +
+    '<th class="right">報酬率</th><th class="right">占比</th>' + extraCol + '</tr>';
+
+  var totals = { marketValue: 0, pnl: 0, rpnl: 0 };
 
   data.forEach(function(e) {
     var qty = num(e["持有股數"]);
     if (qty <= 0) return;
-    var pnl = num(e["未實現損益"]);
-    var mv  = num(e["持倉市值"]);
+    var pnl     = num(e["未實現損益"]);
+    var mv      = num(e["持倉市值"]);
+    var acctKey = e["銀行"] + "-" + e["帳戶名"] + "|" + e["Ticker"];
+    var rpnl    = pnlMaps ? (pnlMaps.byAcctTicker[acctKey] || 0) : 0;
     totals.marketValue += mv;
     totals.pnl         += pnl;
+    totals.rpnl        += rpnl;
+
+    var rpnlCell = hasPeriod
+      ? '<td class="right ' + valCls(rpnl) + '">' + fmtCurrency(rpnl) + '</td>'
+      : '';
 
     html += '<tr>' +
       '<td>' + e["銀行"] + '</td>' +
       '<td><span class="badge badge-account">' + e["帳戶名"] + '</span></td>' +
-      '<td><strong style="color:' + 'var(--primary-light)' + '">' + e["Ticker"] + '</strong></td>' +
+      '<td><strong style="color:var(--primary-light)">' + e["Ticker"] + '</strong></td>' +
       '<td class="right">' + fmtNum(qty) + '</td>' +
       '<td class="right">' + fmtCurrency(num(e["平均成本"])) + '</td>' +
       '<td class="right">' + fmtCurrency(num(e["現價"])) + '</td>' +
@@ -1115,8 +1628,13 @@ function renderHoldingsTable(market) {
       '<td class="right ' + valCls(pnl) + '">' + fmtCurrency(pnl) + '</td>' +
       '<td class="right ' + valCls(pnl) + '">' + fmtPercent(num(e["未實現損益率"])) + '</td>' +
       '<td class="right">' + fmtPercent(num(e["持倉占比"])) + '</td>' +
+      rpnlCell +
       '</tr>';
   });
+
+  var rpnlTotal = hasPeriod
+    ? '<td class="right ' + valCls(totals.rpnl) + '">' + fmtCurrency(totals.rpnl) + '</td>'
+    : '';
 
   html += '<tr style="font-weight:700;border-top:2px solid var(--border)">' +
     '<td colspan="6">合計</td>' +
@@ -1124,6 +1642,7 @@ function renderHoldingsTable(market) {
     '<td class="right ' + valCls(totals.pnl) + '">' + fmtCurrency(totals.pnl) + '</td>' +
     '<td class="right">-</td>' +
     '<td class="right">-</td>' +
+    rpnlTotal +
     '</tr>';
 
   html += '</table>';
@@ -1131,17 +1650,34 @@ function renderHoldingsTable(market) {
 }
 
 function renderStocksTable(market) {
+  var f    = getFilters();
   var data = filterData(DATA.equity_by_ticker);
-  var html = '<table><tr><th>標的</th><th class="right">股數</th><th class="right">平均成本</th><th class="right">現價</th><th class="right">持有成本</th><th class="right">市值</th><th class="right">未實現損益</th><th class="right">報酬率</th><th class="right">已實現損益</th><th class="right">股息</th></tr>';
+  var hasPeriod = !!DATE_FROM;
+
+  var pnlMaps = null;
+  var divByTicker = null;
+  if (hasPeriod && cachedAllTradeEvents) {
+    var fromDate = new Date(DATE_FROM + "T00:00:00+08:00");
+    var toDate   = DATE_TO ? new Date(DATE_TO + "T23:59:59+08:00") : new Date();
+    pnlMaps     = computeFIFOPeriodPnLMaps(f, fromDate, toDate);
+    divByTicker = computePeriodDividendsByTicker(f, fromDate, toDate);
+  }
+
+  var periodLabel = hasPeriod ? '（期間）' : '';
+  var html = '<table><tr><th>標的</th><th class="right">股數</th><th class="right">平均成本</th>' +
+    '<th class="right">現價</th><th class="right">持有成本</th><th class="right">市值</th>' +
+    '<th class="right">未實現損益</th><th class="right">報酬率</th>' +
+    '<th class="right">已實現損益' + periodLabel + '</th>' +
+    '<th class="right">股息' + periodLabel + '</th></tr>';
 
   var totals = { cost: 0, marketValue: 0, pnl: 0, rpnl: 0, dividend: 0 };
 
   data.forEach(function(e) {
     var pnl  = num(e["未實現損益"]);
-    var rpnl = num(e["累計已實現損益"]);
+    var rpnl = pnlMaps     ? (pnlMaps.byTicker[e["Ticker"]] || 0) : num(e["累計已實現損益"]);
+    var div  = divByTicker ? (divByTicker[e["Ticker"]]      || 0) : num(e["累計已實現股息"]);
     var mv   = num(e["總持倉市值"]);
     var cost = num(e["總持有成本"]);
-    var div  = num(e["累計已實現股息"]);
     totals.cost        += cost;
     totals.marketValue += mv;
     totals.pnl         += pnl;
@@ -1188,27 +1724,46 @@ function renderMarketTable() {
   cols.forEach(function(c) { html += '<th>' + c + '</th>'; });
   html += '</tr>';
 
-  var pctCols = {"總損益率":1, "股票倉位":1, "現金倉位":1, "未實現總損益率":1, "已實現總損益率":1};
+  var rateCols = {"總損益率":1,"未實現總損益率":1,"已實現總損益率":1,"股票倉位":1,"現金倉位":1};
   var sumCols = {"總資本":0,"總資產":0,"NAV":0,"總損益":0,"持倉成本":0,"持倉市值":0,"未實現總損益":0,"已實現總損益":0,"利息與股息":0,"可用現金":0,"定存":0};
 
+  // 日期篩選：若有起訖日，取期間指標覆蓋部分欄位
+  var pm = (DATE_FROM && f.account === "ALL") ? computePeriodMetrics(f) : null;
+
   data.forEach(function(row) {
+    var capital    = pm ? pm.capital      : num(row["總資本"]);
+    var realTotal  = pm ? pm.realizedTotal : num(row["已實現總損益"]);
+    var interest   = pm ? pm.interest      : num(row["利息與股息"]);
+    var unrealTotal = num(row["未實現總損益"]);
+    var totalPnL   = pm ? (realTotal + unrealTotal) : num(row["總損益"]);
+    var totalRate  = capital > 0 ? totalPnL / capital : num(row["總損益率"]);
+    var realRate   = capital > 0 ? realTotal / capital : num(row["已實現總損益率"]);
+    var unrealRate = capital > 0 ? unrealTotal / capital : num(row["未實現總損益率"]);
+
+    var override = {
+      "總資本":         capital,
+      "總損益":         totalPnL,
+      "總損益率":       totalRate,
+      "已實現總損益":   realTotal,
+      "已實現總損益率": realRate,
+      "利息與股息":     interest,
+      "未實現總損益率": unrealRate
+    };
+
     html += '<tr>';
     cols.forEach(function(c) {
-      var v = row[c];
+      var v = (pm && c in override) ? override[c] : row[c];
+      var n = num(v);
       if (c === "市場") {
-        html += '<td><strong>' + v + '</strong></td>';
-      } else if (pctCols[c]) {
-        var n = num(v);
+        html += '<td><strong>' + row["市場"] + '</strong></td>';
+      } else if (rateCols[c]) {
         html += '<td class="right ' + valCls(n) + '">' + fmtPercent(n) + '</td>';
       } else if (typeof v === "string" && v.includes("%")) {
         html += '<td class="right ' + valCls(num(v)) + '">' + v + '</td>';
-      } else if (typeof v === "number" || (typeof v === "string" && v.includes("$"))) {
-        var n = num(v);
-        html += '<td class="right ' + valCls(n) + '">' + fmtCurrency(n) + '</td>';
       } else {
-        html += '<td class="right">' + (v !== null && v !== undefined ? v : "") + '</td>';
+        html += '<td class="right ' + valCls(n) + '">' + fmtCurrency(n) + '</td>';
       }
-      if (c in sumCols) sumCols[c] += num(v);
+      if (c in sumCols) sumCols[c] += (pm && c in override) ? override[c] : num(row[c]);
     });
     html += '</tr>';
   });
@@ -1219,7 +1774,10 @@ function renderMarketTable() {
       html += '<td>合計</td>';
     } else if (c in sumCols) {
       var n = sumCols[c];
-      html += '<td class="right ' + valCls(n) + '">' + fmtCurrency(n) + '</td>';
+      if (c === "總損益率")       n = sumCols["總資本"] > 0 ? sumCols["總損益"] / sumCols["總資本"] : 0;
+      if (c === "已實現總損益率") n = sumCols["總資本"] > 0 ? sumCols["已實現總損益"] / sumCols["總資本"] : 0;
+      if (c === "未實現總損益率") n = sumCols["總資本"] > 0 ? sumCols["未實現總損益"] / sumCols["總資本"] : 0;
+      html += '<td class="right ' + valCls(n) + '">' + (rateCols[c] ? fmtPercent(n) : fmtCurrency(n)) + '</td>';
     } else {
       html += '<td class="right">-</td>';
     }
@@ -1232,16 +1790,39 @@ function renderMarketTable() {
 
 function renderAccountsTable(market) {
   var data = filterData(DATA.account_status, { currencyField: "幣別" });
-  var html = '<table><tr><th>銀行</th><th>帳戶</th><th>幣別</th><th class="right">總資本</th><th class="right">持倉成本</th><th class="right">已實現股票損益</th><th class="right">利息與股息</th><th class="right">定存</th><th class="right">可用現金</th></tr>';
+
+  // 只顯示「是否投資帳戶 = true」的帳戶
+  if (DATA.account_config && DATA.account_config.length > 0) {
+    var investSet = {};
+    DATA.account_config.forEach(function(c) {
+      if (c["是否投資帳戶"]) investSet[c["銀行"] + "|" + c["帳戶名"] + "|" + c["幣別"]] = true;
+    });
+    data = data.filter(function(a) {
+      return !!investSet[a["銀行"] + "|" + a["帳戶名"] + "|" + a["幣別"]];
+    });
+  }
+
+  var hasPeriod = !!DATE_FROM;
+  var html = '<table><tr><th>銀行</th><th>帳戶</th><th>幣別</th>' +
+    '<th class="right">總資本</th><th class="right">持倉成本</th>' +
+    '<th class="right">已實現股票損益</th><th class="right">利息與股息</th>' +
+    '<th class="right">定存</th><th class="right">可用現金</th></tr>';
 
   var totals = { capital: 0, invested: 0, realized: 0, interest: 0, deposit: 0, cash: 0 };
 
   data.forEach(function(a) {
-    var realized = num(a["已實現股票損益"]);
-    totals.capital  += num(a["總資本"]);
+    var acctKey    = a["銀行"] + "-" + a["帳戶名"];
+    var acctMarket = (a["幣別"] === "USD") ? "美股" : "台股";
+    var pm = hasPeriod ? computePeriodMetrics({ market: acctMarket, account: acctKey, ticker: "ALL", currency: a["幣別"] }) : null;
+
+    var capital  = pm ? pm.capital        : num(a["總資本"]);
+    var realized = pm ? pm.realizedEquity : num(a["已實現股票損益"]);
+    var interest = pm ? pm.interest       : num(a["利息與股息"]);
+
+    totals.capital  += capital;
     totals.invested += num(a["持倉成本"]);
     totals.realized += realized;
-    totals.interest += num(a["利息與股息"]);
+    totals.interest += interest;
     totals.deposit  += num(a["定存"]);
     totals.cash     += num(a["可用現金"]);
 
@@ -1249,10 +1830,10 @@ function renderAccountsTable(market) {
       '<td>' + a["銀行"] + '</td>' +
       '<td><span class="badge badge-account">' + a["帳戶名"] + '</span></td>' +
       '<td>' + a["幣別"] + '</td>' +
-      '<td class="right">' + fmtCurrency(num(a["總資本"])) + '</td>' +
+      '<td class="right">' + fmtCurrency(capital) + '</td>' +
       '<td class="right">' + fmtCurrency(num(a["持倉成本"])) + '</td>' +
       '<td class="right ' + valCls(realized) + '">' + fmtCurrency(realized) + '</td>' +
-      '<td class="right">' + fmtCurrency(num(a["利息與股息"])) + '</td>' +
+      '<td class="right">' + fmtCurrency(interest) + '</td>' +
       '<td class="right">' + fmtCurrency(num(a["定存"])) + '</td>' +
       '<td class="right">' + fmtCurrency(num(a["可用現金"])) + '</td>' +
       '</tr>';
