@@ -507,7 +507,7 @@
 
 // ===== 設定 =====
 // 部署 Apps Script Web App 後，把 URL 貼到這裡
-var API_URL = "https://script.google.com/macros/s/AKfycbzthsshqCiQ_365RjtPJN1hfuYc4wsMVhjiCq3bg41Ob-PhVNuXWNxwyu-uBBH6m6c/exec";
+var API_URL = "https://script.google.com/macros/s/AKfycby0kJjdjxa3o10y9WSWyzqF0sJvQEePbBwVgOb_M4t9YZjMlIkCEpyT8LVa5OrVUOUg/exec";
 
 // ===== 全域資料 =====
 var DATA = null;
@@ -554,40 +554,29 @@ function onDateFilterChange() {
 
 // ===== 載入績效事件表資料 =====
 async function loadPerfData() {
-  var url = 'https://docs.google.com/spreadsheets/d/' + PERF_SHEET_ID +
-            '/gviz/tq?tqx=out:json&gid=' + PERF_SHEET_GID + '&headers=1';
   try {
-    var res = await fetch(url);
-    var text = await res.text();
-    var jsonStart = text.indexOf('{');
-    var jsonEnd = text.lastIndexOf('}');
-    if (jsonStart < 0 || jsonEnd < 0) throw new Error('Invalid gviz response');
-    var json = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
+    var res = await fetch(API_URL + '?action=perf');
+    var json = await res.json();
+    var rows = json.perf_events || [];
     PERF_DATA = [];
-    var rows = (json.table || {}).rows || [];
     rows.forEach(function(row) {
-      var cells = row.c || [];
-      var dateCell = cells[0];
-      var perfCell = cells[1];
-      var soxCell  = cells[2];
-      var gapCell  = cells[3];
+      var keys = Object.keys(row);
       var dateStr = '';
-      if (dateCell && dateCell.v) {
-        var dv = String(dateCell.v);
-        if (dv.startsWith('Date(')) {
-          var parts = dv.replace('Date(', '').replace(')', '').split(',');
-          var y = parseInt(parts[0]), m = parseInt(parts[1]) + 1, d = parseInt(parts[2]);
-          dateStr = y + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0');
-        } else {
-          dateStr = dv.split('T')[0];
-        }
+      var dv = row[keys[0]];
+      if (dv instanceof Date) {
+        dateStr = dv.toISOString().split('T')[0];
+      } else if (dv) {
+        dateStr = String(dv).split('T')[0];
       }
       if (!dateStr) return;
+      var perfRate = row[keys[1]];
+      var soxRate  = row[keys[2]];
+      var gap      = row[keys[3]];
       PERF_DATA.push({
         date:     dateStr,
-        perfRate: (perfCell && perfCell.v != null) ? perfCell.v : null,
-        soxRate:  (soxCell  && soxCell.v  != null) ? soxCell.v  : null,
-        gap:      (gapCell  && gapCell.v  != null) ? gapCell.v  : null
+        perfRate: (perfRate != null && perfRate !== '') ? Number(perfRate) : null,
+        soxRate:  (soxRate  != null && soxRate  !== '') ? Number(soxRate)  : null,
+        gap:      (gap      != null && gap      !== '') ? Number(gap)      : null
       });
     });
   } catch (e) {
