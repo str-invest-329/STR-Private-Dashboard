@@ -669,6 +669,11 @@ function renderPerfKPI() {
     '</div>';
   }
 
+  var market = document.getElementById('marketFilter') ? document.getElementById('marketFilter').value : '';
+  if (market === '台股') {
+    perfGrid.innerHTML = '';
+    return;
+  }
   perfGrid.innerHTML =
     buildCard('總體績效(2026/01/01起)', PERF_DATA) +
     buildCard('總體績效(2026/05/01起)', PERF_DATA2);
