@@ -445,7 +445,7 @@
   <div class="kpi-grid" id="kpiGrid">
     <div class="loading">載入中...</div>
   </div>
-  <div id="perfKpiGrid" style="margin-bottom:16px">
+  <div id="perfKpiGrid" style="margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap;">
     <div class="loading">績效資料載入中...</div>
   </div>
 
@@ -519,6 +519,7 @@ var DATE_TO = "";
 
 // ===== 績效事件表 =====
 var PERF_DATA = null;
+var PERF_DATA2 = null;
 
 // ===== 顏色 =====
 var COLORS = ["#2B2D42", "#8D99AE", "#EF233C", "#D90429", "#3d4060", "#a8b2c0", "#ff4d5e", "#1a1b2e", "#c0c8d4"];
@@ -540,7 +541,7 @@ async function loadData() {
       document.getElementById("kpiGrid").innerHTML = '<div class="error">載入失敗: ' + err.message + '</div>';
     }
   }
-  await loadPerfData();
+  await Promise.all([loadPerfData(), loadPerfData2()]);
   renderPerfKPI();
 }
 
@@ -587,27 +588,49 @@ async function loadPerfData() {
   }
 }
 
+// ===== 載入績效事件表2資料 =====
+async function loadPerfData2() {
+  try {
+    var res = await fetch(API_URL + '?action=perf2');
+    var json = await res.json();
+    var rows = json.perf_events2 || [];
+    PERF_DATA2 = [];
+    rows.forEach(function(row) {
+      var keys = Object.keys(row);
+      var dateStr = '';
+      var dv = row[keys[0]];
+      if (dv) {
+        var d = new Date(dv);
+        if (!isNaN(d)) {
+          var y = d.getFullYear();
+          var m = String(d.getMonth() + 1).padStart(2, '0');
+          var dd = String(d.getDate()).padStart(2, '0');
+          dateStr = y + '-' + m + '-' + dd;
+        }
+      }
+      if (!dateStr) return;
+      var perfRate = row[keys[1]];
+      var soxRate  = row[keys[2]];
+      var gap      = row[keys[3]];
+      PERF_DATA2.push({
+        date:     dateStr,
+        perfRate: (perfRate != null && perfRate !== '') ? Number(perfRate) : null,
+        soxRate:  (soxRate  != null && soxRate  !== '') ? Number(soxRate)  : null,
+        gap:      (gap      != null && gap      !== '') ? Number(gap)      : null
+      });
+    });
+  } catch (e) {
+    console.error('Failed to load perf data2:', e);
+    PERF_DATA2 = [];
+  }
+}
+
 // ===== 渲染績效 KPI 卡片 =====
 function renderPerfKPI() {
   var perfGrid = document.getElementById('perfKpiGrid');
   if (!perfGrid) return;
 
-  if (!PERF_DATA || PERF_DATA.length === 0) {
-    perfGrid.innerHTML = '<div class="perf-combined-card"><div class="perf-title">總體績效(2026/01/01起)</div><div style="color:var(--gray);font-size:0.85rem">無法載入績效資料</div></div>';
-    return;
-  }
-
   var dateTo = document.getElementById('dateTo').value;
-
-  var filtered = PERF_DATA.filter(function(r) {
-    return r.perfRate != null && (!dateTo || r.date <= dateTo);
-  });
-  var targetRow = filtered.length > 0 ? filtered[filtered.length - 1] : null;
-
-  var perfRate = targetRow ? targetRow.perfRate : null;
-  var soxRate  = targetRow ? targetRow.soxRate  : null;
-  var gap      = targetRow ? targetRow.gap      : null;
-  var dateLabel = targetRow ? targetRow.date.replace(/-/g, '/') : '--';
 
   function perfFmt(v) {
     if (v == null) return '---';
@@ -620,9 +643,21 @@ function renderPerfKPI() {
       '<div class="perf-col-value ' + cls + '">' + perfFmt(v) + '</div></div>';
   }
 
-  perfGrid.innerHTML =
-    '<div class="perf-combined-card">' +
-      '<div class="perf-title">總體績效(2026/01/01起)</div>' +
+  function buildCard(title, data) {
+    if (!data || data.length === 0) {
+      return '<div class="perf-combined-card"><div class="perf-title">' + title + '</div>' +
+        '<div style="color:var(--gray);font-size:0.85rem">無法載入績效資料</div></div>';
+    }
+    var filtered = data.filter(function(r) {
+      return r.perfRate != null && (!dateTo || r.date <= dateTo);
+    });
+    var targetRow = filtered.length > 0 ? filtered[filtered.length - 1] : null;
+    var perfRate  = targetRow ? targetRow.perfRate : null;
+    var soxRate   = targetRow ? targetRow.soxRate  : null;
+    var gap       = targetRow ? targetRow.gap      : null;
+    var dateLabel = targetRow ? targetRow.date.replace(/-/g, '/') : '--';
+    return '<div class="perf-combined-card">' +
+      '<div class="perf-title">' + title + '</div>' +
       '<div class="perf-combined-body">' +
         col('郭家獲利率', perfRate) +
         '<div class="perf-col-divider"></div>' +
@@ -632,6 +667,11 @@ function renderPerfKPI() {
       '</div>' +
       '<div class="perf-combined-date">截至 ' + dateLabel + '</div>' +
     '</div>';
+  }
+
+  perfGrid.innerHTML =
+    buildCard('總體績效(2026/01/01起)', PERF_DATA) +
+    buildCard('總體績效(2026/05/01起)', PERF_DATA2);
 }
 
 // ===== Filter 連動 =====
