@@ -643,7 +643,7 @@ function renderPerfKPI() {
       '<div class="perf-col-value ' + cls + '">' + perfFmt(v) + '</div></div>';
   }
 
-  function buildCard(title, data) {
+  function buildCard(title, data, benchmarkLabel) {
     if (!data || data.length === 0) {
       return '<div class="perf-combined-card"><div class="perf-title">' + title + '</div>' +
         '<div style="color:var(--gray);font-size:0.85rem">無法載入績效資料</div></div>';
@@ -661,7 +661,7 @@ function renderPerfKPI() {
       '<div class="perf-combined-body">' +
         col('郭家獲利率', perfRate) +
         '<div class="perf-col-divider"></div>' +
-        col('SOX漲幅', soxRate) +
+        col(benchmarkLabel, soxRate) +
         '<div class="perf-col-divider"></div>' +
         col('獲利差', gap) +
       '</div>' +
@@ -671,12 +671,14 @@ function renderPerfKPI() {
 
   var market = document.getElementById('marketFilter') ? document.getElementById('marketFilter').value : '';
   if (market === '台股') {
-    perfGrid.innerHTML = '';
+    perfGrid.innerHTML =
+      buildCard('總體績效(2026/01/01起)', PERF_DATA, '00981A漲幅') +
+      buildCard('總體績效(2026/05/01起)', PERF_DATA2, '00981A漲幅');
     return;
   }
   perfGrid.innerHTML =
-    buildCard('總體績效(2026/01/01起)', PERF_DATA) +
-    buildCard('總體績效(2026/05/01起)', PERF_DATA2);
+    buildCard('總體績效(2026/01/01起)', PERF_DATA, 'SOX漲幅') +
+    buildCard('總體績效(2026/05/01起)', PERF_DATA2, 'SOX漲幅');
 }
 
 // ===== Filter 連動 =====
