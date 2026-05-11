@@ -52,7 +52,7 @@
     /* === KPI Cards === */
     .kpi-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 12px;
       margin-bottom: 16px;
     }
@@ -445,7 +445,7 @@
   <div class="kpi-grid" id="kpiGrid">
     <div class="loading">載入中...</div>
   </div>
-  <div id="perfKpiGrid" style="margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap;">
+  <div id="perfKpiGrid" style="margin-bottom:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
     <div class="loading">績效資料載入中...</div>
   </div>
 
@@ -551,37 +551,41 @@ function onDateFilterChange() {
   renderPerfKPI();
 }
 
+// ===== 名稱式 parser:用欄位標題抓,插欄/改欄序都不會壞 =====
+function parsePerfRowsByHeader(rows) {
+  var result = [];
+  rows.forEach(function(row) {
+    var dv = row["日期"];
+    var dateStr = '';
+    if (dv) {
+      var d = new Date(dv);
+      if (!isNaN(d)) {
+        var y = d.getFullYear();
+        var m = String(d.getMonth() + 1).padStart(2, '0');
+        var dd = String(d.getDate()).padStart(2, '0');
+        dateStr = y + '-' + m + '-' + dd;
+      }
+    }
+    if (!dateStr) return;
+    var perfRate = row["郭家總體獲利率"];
+    var soxRate  = row["SOX指數漲跌幅"];
+    var gap      = row["獲利差距"];
+    result.push({
+      date:     dateStr,
+      perfRate: (perfRate != null && perfRate !== '') ? Number(perfRate) : null,
+      soxRate:  (soxRate  != null && soxRate  !== '') ? Number(soxRate)  : null,
+      gap:      (gap      != null && gap      !== '') ? Number(gap)      : null
+    });
+  });
+  return result;
+}
+
 // ===== 載入績效事件表資料 =====
 async function loadPerfData() {
   try {
     var res = await fetch(API_URL + '?action=perf');
     var json = await res.json();
-    var rows = json.perf_events || [];
-    PERF_DATA = [];
-    rows.forEach(function(row) {
-      var keys = Object.keys(row);
-      var dateStr = '';
-      var dv = row[keys[0]];
-      if (dv) {
-        var d = new Date(dv);
-        if (!isNaN(d)) {
-          var y = d.getFullYear();
-          var m = String(d.getMonth() + 1).padStart(2, '0');
-          var dd = String(d.getDate()).padStart(2, '0');
-          dateStr = y + '-' + m + '-' + dd;
-        }
-      }
-      if (!dateStr) return;
-      var perfRate = row[keys[1]];
-      var soxRate  = row[keys[2]];
-      var gap      = row[keys[3]];
-      PERF_DATA.push({
-        date:     dateStr,
-        perfRate: (perfRate != null && perfRate !== '') ? Number(perfRate) : null,
-        soxRate:  (soxRate  != null && soxRate  !== '') ? Number(soxRate)  : null,
-        gap:      (gap      != null && gap      !== '') ? Number(gap)      : null
-      });
-    });
+    PERF_DATA = parsePerfRowsByHeader(json.perf_events || []);
   } catch (e) {
     console.error('Failed to load perf data:', e);
     PERF_DATA = [];
@@ -593,32 +597,7 @@ async function loadPerfData2() {
   try {
     var res = await fetch(API_URL + '?action=perf2');
     var json = await res.json();
-    var rows = json.perf_events2 || [];
-    PERF_DATA2 = [];
-    rows.forEach(function(row) {
-      var keys = Object.keys(row);
-      var dateStr = '';
-      var dv = row[keys[0]];
-      if (dv) {
-        var d = new Date(dv);
-        if (!isNaN(d)) {
-          var y = d.getFullYear();
-          var m = String(d.getMonth() + 1).padStart(2, '0');
-          var dd = String(d.getDate()).padStart(2, '0');
-          dateStr = y + '-' + m + '-' + dd;
-        }
-      }
-      if (!dateStr) return;
-      var perfRate = row[keys[1]];
-      var soxRate  = row[keys[2]];
-      var gap      = row[keys[3]];
-      PERF_DATA2.push({
-        date:     dateStr,
-        perfRate: (perfRate != null && perfRate !== '') ? Number(perfRate) : null,
-        soxRate:  (soxRate  != null && soxRate  !== '') ? Number(soxRate)  : null,
-        gap:      (gap      != null && gap      !== '') ? Number(gap)      : null
-      });
-    });
+    PERF_DATA2 = parsePerfRowsByHeader(json.perf_events2 || []);
   } catch (e) {
     console.error('Failed to load perf data2:', e);
     PERF_DATA2 = [];
@@ -669,6 +648,28 @@ function renderPerfKPI() {
     '</div>';
   }
 
+  function buildPositionCard(market) {
+    var row = (DATA && DATA.market_status || []).find(function(r) { return r["市場"] === market; });
+    if (!row) return '';
+    var eq = num(row["股票倉位"]);
+    var cash = num(row["現金倉位"]);
+    var eqPct = (eq * 100).toFixed(1);
+    var cashPct = (cash * 100).toFixed(1);
+    return '<div class="perf-combined-card" style="border-left-color:#8D99AE;">' +
+      '<div class="perf-title">倉位配置</div>' +
+      '<div class="position-bar" style="margin-top:2px">' +
+        '<div class="position-bar-track">' +
+          '<div class="position-bar-equity" style="width:' + eqPct + '%">' + (eqPct > 8 ? eqPct + '%' : '') + '</div>' +
+          '<div class="position-bar-cash">' + (cashPct > 8 ? cashPct + '%' : '') + '</div>' +
+        '</div>' +
+        '<div class="position-bar-labels">' +
+          '<span data-tooltip="持倉成本 / (持倉成本+可用現金+定存)">股票 ' + eqPct + '%</span>' +
+          '<span data-tooltip="(可用現金+定存) / (持倉成本+可用現金+定存)">現金 ' + cashPct + '%</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
   var market = document.getElementById('marketFilter') ? document.getElementById('marketFilter').value : '';
   if (market === '台股') {
     perfGrid.innerHTML = '';
@@ -676,7 +677,8 @@ function renderPerfKPI() {
   }
   perfGrid.innerHTML =
     buildCard('總體績效(2026/01/01起)', PERF_DATA) +
-    buildCard('總體績效(2026/05/01起)', PERF_DATA2);
+    buildCard('總體績效(2026/05/01起)', PERF_DATA2) +
+    buildPositionCard(market);
 }
 
 // ===== Filter 連動 =====
@@ -854,11 +856,6 @@ function buildMarketKPI(f) {
   return [
     { label: "總資本", value: fmtCurrency(capital), sub: "外部注資合計", border: KPI_BORDERS[0], chartView: "allocation", tooltip: "總資本 = 股本 + 換匯 + 轉帳" },
     { label: "總資產", value: fmtCurrency(totalAssets), sub: "NAV " + fmtCurrency(nav), border: KPI_BORDERS[1], chartView: "allocation", tooltip: "總資產 = 持倉市值 + 可用現金 + 定存", subTooltip: "NAV = 總資產 - 總負債" },
-    { label: "倉位配置", bar: { equity: eqWeight, cash: cashWeight }, border: KPI_BORDERS[2], chartView: "allocation", tooltip: "股票倉位 + 現金倉位 = 100%" },
-    { spacer: true },
-    { label: "已實現總損益", value: fmtCurrency(realTotalPnL), sub: "已實現總損益率 " + fmtPercent(realTotalRate), border: KPI_BORDERS[5], cls: valCls(realTotalPnL), chartView: "realized_detail", subTooltip: "已實現總損益率 = 已實現總損益 / 總資本" },
-    { label: "未實現總損益", value: fmtCurrency(unrealTotalPnL), sub: "未實現總損益率 " + fmtPercent(unrealTotalRate), border: KPI_BORDERS[4], cls: valCls(unrealTotalPnL), chartView: "unrealized", tooltip: "未實現總損益 = 持倉市值 - 持倉成本", subTooltip: "未實現總損益率 = 未實現總損益 / 總資本" },
-    { label: "總損益", value: fmtCurrency(totalPnL), sub: "總損益率 " + fmtPercent(totalReturn), border: KPI_BORDERS[3], cls: valCls(totalPnL), chartView: "pnl_breakdown", tooltip: "總損益 = 已實現總損益 + 未實現總損益", subTooltip: "總損益率 = 總損益 / 總資本" },
     { label: "可用現金", value: fmtCurrency(availCash), sub: "定存 " + fmtCurrency(deposit), border: KPI_BORDERS[1], chartView: "allocation", tooltip: "可用現金 = 帳戶可動用現金（不含定存）", subTooltip: "定存 = 目前定存金額" }
   ];
 }
@@ -886,11 +883,6 @@ function buildAccountKPI(f) {
   return [
     { label: "總資本", value: fmtCurrency(capital), sub: f.account + " " + acct["幣別"], border: KPI_BORDERS[0], chartView: "allocation", tooltip: "總資本 = 股本 + 換匯 + 轉帳" },
     { label: "總資產", value: fmtCurrency(totalAssets), sub: "NAV " + fmtCurrency(nav), border: KPI_BORDERS[1], chartView: "allocation", tooltip: "總資產 = 持倉市值 + 可用現金 + 定存", subTooltip: "NAV = 總資產 - 總負債" },
-    { label: "倉位配置", bar: { equity: eqWeight, cash: cashWeight }, border: KPI_BORDERS[2], chartView: "allocation", tooltip: "股票倉位 + 現金倉位 = 100%" },
-    { spacer: true },
-    { label: "已實現總損益", value: fmtCurrency(realTotalPnL), sub: "已實現總損益率 " + fmtPercent(realTotalRate), border: KPI_BORDERS[5], cls: valCls(realTotalPnL), chartView: "realized_detail", subTooltip: "已實現總損益率 = 已實現總損益 / 總資本" },
-    { label: "未實現總損益", value: fmtCurrency(unrealTotalPnL), sub: "未實現總損益率 " + fmtPercent(unrealTotalRate), border: KPI_BORDERS[4], cls: valCls(unrealTotalPnL), chartView: "unrealized", tooltip: "未實現總損益 = 持倉市值 - 持倉成本", subTooltip: "未實現總損益率 = 未實現總損益 / 總資本" },
-    { label: "總損益", value: fmtCurrency(totalPnL), sub: "總損益率 " + fmtPercent(totalReturn), border: KPI_BORDERS[3], cls: valCls(totalPnL), chartView: "pnl_breakdown", tooltip: "總損益 = 已實現總損益 + 未實現總損益", subTooltip: "總損益率 = 總損益 / 總資本" },
     { label: "可用現金", value: fmtCurrency(availCash), sub: "定存 " + fmtCurrency(deposit), border: KPI_BORDERS[1], chartView: "allocation", tooltip: "可用現金 = 帳戶可動用現金（不含定存）", subTooltip: "定存 = 目前定存金額" }
   ];
 }
