@@ -1,0 +1,10 @@
+# Claude Code local settings
+.claude/
+.mcp.json
+
+# Backup files
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
