@@ -307,24 +307,27 @@
       align-items: center;
     }
     .perf-col {
-      padding: 0 24px;
+      padding: 0 4px;
       text-align: center;
+      flex: 1;
+      min-width: 0;
     }
     .perf-col:first-child { padding-left: 0; }
+    .perf-col:last-child { padding-right: 0; }
     .perf-col-divider {
       width: 1px;
-      height: 44px;
+      height: 38px;
       background: var(--border);
       flex-shrink: 0;
     }
     .perf-col .perf-col-label {
-      font-size: 0.76rem;
+      font-size: 0.72rem;
       color: var(--dark-gray);
       font-weight: 600;
       margin-bottom: 4px;
     }
     .perf-col .perf-col-value {
-      font-size: 1.4rem;
+      font-size: 1.15rem;
       font-weight: 700;
     }
     .perf-total-row {
