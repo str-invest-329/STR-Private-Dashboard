@@ -288,7 +288,8 @@
       border-radius: 10px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.08);
       border-left: 3px solid var(--primary);
-      display: inline-block;
+      display: flex;
+      flex-direction: column;
     }
     .perf-combined-card .perf-title {
       font-size: 0.82rem;
@@ -321,10 +322,20 @@
       font-size: 1.4rem;
       font-weight: 700;
     }
+    .perf-total-row {
+      display: flex;
+      align-items: baseline;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--border);
+      gap: 8px;
+    }
+    .perf-total-label { font-size: 0.92rem; color: var(--text); font-weight: 700; }
+    .perf-total-value { font-size: 1.02rem; font-weight: 700; }
     .perf-combined-date {
       font-size: 0.76rem;
       color: var(--gray);
-      margin-top: 10px;
+      margin-left: auto;
     }
 
     /* === Date Filter === */
@@ -570,11 +581,13 @@ function parsePerfRowsByHeader(rows) {
     var perfRate = row["郭家總體獲利率"];
     var soxRate  = row["SOX指數漲跌幅"];
     var gap      = row["獲利差距"];
+    var profit   = row["分子"];
     result.push({
-      date:     dateStr,
-      perfRate: (perfRate != null && perfRate !== '') ? Number(perfRate) : null,
-      soxRate:  (soxRate  != null && soxRate  !== '') ? Number(soxRate)  : null,
-      gap:      (gap      != null && gap      !== '') ? Number(gap)      : null
+      date:        dateStr,
+      perfRate:    (perfRate != null && perfRate !== '') ? Number(perfRate) : null,
+      soxRate:     (soxRate  != null && soxRate  !== '') ? Number(soxRate)  : null,
+      gap:         (gap      != null && gap      !== '') ? Number(gap)      : null,
+      totalProfit: (profit   != null && profit   !== '') ? Number(profit)   : null
     });
   });
   return result;
@@ -622,7 +635,8 @@ function renderPerfKPI() {
       '<div class="perf-col-value ' + cls + '">' + perfFmt(v) + '</div></div>';
   }
 
-  function buildCard(title, data) {
+  function buildCard(title, data, showGap) {
+    if (showGap === undefined) showGap = true;
     if (!data || data.length === 0) {
       return '<div class="perf-combined-card"><div class="perf-title">' + title + '</div>' +
         '<div style="color:var(--gray);font-size:0.85rem">無法載入績效資料</div></div>';
@@ -634,17 +648,23 @@ function renderPerfKPI() {
     var perfRate  = targetRow ? targetRow.perfRate : null;
     var soxRate   = targetRow ? targetRow.soxRate  : null;
     var gap       = targetRow ? targetRow.gap      : null;
+    var profit    = targetRow ? targetRow.totalProfit : null;
     var dateLabel = targetRow ? targetRow.date.replace(/-/g, '/') : '--';
+    var profitStr = (profit == null) ? '---' : fmtCurrency(profit);
+    var profitCls = (profit == null) ? 'neutral' : valCls(profit);
     return '<div class="perf-combined-card">' +
       '<div class="perf-title">' + title + '</div>' +
       '<div class="perf-combined-body">' +
         col('郭家獲利率', perfRate) +
         '<div class="perf-col-divider"></div>' +
         col('SOX漲幅', soxRate) +
-        '<div class="perf-col-divider"></div>' +
-        col('獲利差', gap) +
+        (showGap ? '<div class="perf-col-divider"></div>' + col('獲利差', gap) : '') +
       '</div>' +
-      '<div class="perf-combined-date">截至 ' + dateLabel + '</div>' +
+      '<div class="perf-total-row">' +
+        '<span class="perf-total-label">總獲利</span>' +
+        '<span class="perf-total-value ' + profitCls + '">' + profitStr + '</span>' +
+        '<span class="perf-combined-date">截至 ' + dateLabel + '</span>' +
+      '</div>' +
     '</div>';
   }
 
@@ -657,7 +677,7 @@ function renderPerfKPI() {
     var cashPct = (cash * 100).toFixed(1);
     return '<div class="perf-combined-card" style="border-left-color:#8D99AE;">' +
       '<div class="perf-title">倉位配置</div>' +
-      '<div class="position-bar" style="margin-top:2px">' +
+      '<div class="position-bar" style="flex:1;display:flex;flex-direction:column;justify-content:center;">' +
         '<div class="position-bar-track">' +
           '<div class="position-bar-equity" style="width:' + eqPct + '%">' + (eqPct > 8 ? eqPct + '%' : '') + '</div>' +
           '<div class="position-bar-cash">' + (cashPct > 8 ? cashPct + '%' : '') + '</div>' +
@@ -676,7 +696,7 @@ function renderPerfKPI() {
     return;
   }
   perfGrid.innerHTML =
-    buildCard('總體績效(2026/01/01起)', PERF_DATA) +
+    buildCard('總體績效(2026/01/01起)', PERF_DATA, false) +
     buildCard('總體績效(2026/05/01起)', PERF_DATA2) +
     buildPositionCard(market);
 }
