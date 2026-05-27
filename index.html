@@ -679,8 +679,12 @@ function renderPerfKPI() {
   function buildPositionCard(market) {
     var row = (DATA && DATA.market_status || []).find(function(r) { return r["市場"] === market; });
     if (!row) return '';
-    var eq = num(row["股票倉位"]);
-    var cash = num(row["現金倉位"]);
+    // 市值基準：股票市值 / (股票市值 + 可用現金 + 定存)
+    var mktVal = num(row["持倉市值"]);
+    var cashTotal = num(row["可用現金"]) + num(row["定存"]);
+    var denom = mktVal + cashTotal;
+    var eq = denom > 0 ? mktVal / denom : 0;
+    var cash = denom > 0 ? cashTotal / denom : 0;
     var eqPct = (eq * 100).toFixed(1);
     var cashPct = (cash * 100).toFixed(1);
     return '<div class="perf-combined-card" style="border-left-color:#8D99AE;">' +
@@ -691,8 +695,8 @@ function renderPerfKPI() {
           '<div class="position-bar-cash">' + (cashPct > 8 ? cashPct + '%' : '') + '</div>' +
         '</div>' +
         '<div class="position-bar-labels">' +
-          '<span data-tooltip="持倉成本 / (持倉成本+可用現金+定存)">股票 ' + eqPct + '%</span>' +
-          '<span data-tooltip="(可用現金+定存) / (持倉成本+可用現金+定存)">現金 ' + cashPct + '%</span>' +
+          '<span data-tooltip="持倉市值 / (持倉市值+可用現金+定存)">股票 ' + eqPct + '%</span>' +
+          '<span data-tooltip="(可用現金+定存) / (持倉市值+可用現金+定存)">現金 ' + cashPct + '%</span>' +
         '</div>' +
       '</div>' +
     '</div>';
