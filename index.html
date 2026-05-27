@@ -330,6 +330,14 @@
       font-size: 1.15rem;
       font-weight: 700;
     }
+    .perf-col.perf-col-highlight {
+      margin-left: 10px;
+      padding: 6px 10px;
+      box-shadow: inset 0 0 0 1.5px var(--primary);
+      border-radius: 8px;
+      background: rgba(43, 45, 66, 0.04);
+    }
+    .perf-col.perf-col-highlight .perf-col-label { font-size: 0.68rem; white-space: nowrap; }
     .perf-total-row {
       display: flex;
       align-items: baseline;
@@ -637,9 +645,10 @@ function renderPerfKPI() {
     return (v * 100).toFixed(2) + '%';
   }
 
-  function col(label, v) {
+  function col(label, v, highlight) {
     var cls = v != null ? valCls(v) : 'neutral';
-    return '<div class="perf-col"><div class="perf-col-label">' + label + '</div>' +
+    var hl = highlight ? ' perf-col-highlight' : '';
+    return '<div class="perf-col' + hl + '"><div class="perf-col-label">' + label + '</div>' +
       '<div class="perf-col-value ' + cls + '">' + perfFmt(v) + '</div></div>';
   }
 
@@ -666,7 +675,7 @@ function renderPerfKPI() {
         col('郭家獲利率', perfRate) +
         '<div class="perf-col-divider"></div>' +
         col('SOX漲幅', soxRate) +
-        (showGap ? '<div class="perf-col-divider"></div>' + col('獲利差', gap) : '') +
+        (showGap ? col('相對指標獲利差', gap, true) : '') +
       '</div>' +
       '<div class="perf-total-row">' +
         '<span class="perf-total-label">總獲利</span>' +
