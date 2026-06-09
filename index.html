@@ -160,6 +160,11 @@
     .chart-card h3 { font-size: 0.85rem; color: var(--dark-gray); margin-bottom: 12px; }
     .chart-card canvas { max-height: 320px; }
 
+    /* === Perf Trend Chart === */
+    .perf-trend-card { padding: 14px 20px 16px; }
+    .perf-trend-header { display: flex; align-items: center; margin-bottom: 8px; }
+    .perf-trend-header h3 { font-size: 0.85rem; color: var(--dark-gray); margin: 0; }
+
     /* === Tables === */
     .table-card {
       background: var(--bg-card);
@@ -476,6 +481,14 @@
     <div class="loading">績效資料載入中...</div>
   </div>
 
+  <!-- 績效趨勢圖 -->
+  <div id="perfTrendChartWrap" class="chart-card perf-trend-card" style="margin-bottom:16px;">
+    <div class="perf-trend-header">
+      <h3 id="perfTrendTitle">郭家總體獲利率 趨勢（2026/01/01起）</h3>
+    </div>
+    <canvas id="perfTrendCanvas" style="max-height:160px;"></canvas>
+  </div>
+
   <!-- 模塊 2：圖表區（根據 Card 點擊切換）-->
   <div id="chartsModule" class="charts-module">
     <div class="charts-grid" id="chartsGrid">
@@ -570,12 +583,14 @@ async function loadData() {
   }
   await Promise.all([loadPerfData(), loadPerfData2()]);
   renderPerfKPI();
+  renderPerfTrendChart();
 }
 
 // ===== 日期篩選變更 =====
 function onDateFilterChange() {
   DATE_TO = document.getElementById("dateTo").value;
   renderPerfKPI();
+  renderPerfTrendChart();
 }
 
 // ===== 名稱式 parser:用欄位標題抓,插欄/改欄序都不會壞 =====
@@ -722,12 +737,142 @@ function renderPerfKPI() {
     buildPositionCard(market);
 }
 
+// ===== 績效趨勢圖 =====
+var _perfTrendChartInst = null;
+function renderPerfTrendChart() {
+  var market = document.getElementById('marketFilter') ? document.getElementById('marketFilter').value : '';
+  var wrap = document.getElementById('perfTrendChartWrap');
+  if (market === '台股') {
+    if (wrap) wrap.style.display = 'none';
+    if (_perfTrendChartInst) { _perfTrendChartInst.destroy(); _perfTrendChartInst = null; }
+    return;
+  }
+  if (wrap) wrap.style.display = '';
+
+  var dateTo = document.getElementById('dateTo') ? document.getElementById('dateTo').value : '';
+
+  var rows = (PERF_DATA || []).filter(function(r) {
+    return r.perfRate != null && (!dateTo || r.date <= dateTo);
+  });
+
+  var rawLabels = rows.map(function(r) { return r.date; });
+  var rawValues = rows.map(function(r) { return +(r.perfRate * 100).toFixed(4); });
+
+  function interpDate(d1, d2, ratio) {
+    var t1 = new Date(d1).getTime(), t2 = new Date(d2).getTime();
+    var d = new Date(t1 + (t2 - t1) * ratio);
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  var labels = [], values = [];
+  for (var i = 0; i < rawValues.length; i++) {
+    if (i > 0) {
+      var pv = rawValues[i-1], cv = rawValues[i];
+      if ((pv < 0 && cv > 0) || (pv > 0 && cv < 0)) {
+        var r = Math.abs(pv) / (Math.abs(pv) + Math.abs(cv));
+        labels.push(interpDate(rawLabels[i-1], rawLabels[i], r));
+        values.push(0);
+      }
+    }
+    labels.push(rawLabels[i]);
+    values.push(rawValues[i]);
+  }
+
+  var canvas = document.getElementById('perfTrendCanvas');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+
+  if (_perfTrendChartInst) { _perfTrendChartInst.destroy(); _perfTrendChartInst = null; }
+
+  function buildGrad(top, bottom, zeroY) {
+    var g = ctx.createLinearGradient(0, top, 0, bottom);
+    var h = bottom - top;
+    if (h <= 0) return g;
+    if (zeroY <= top) {
+      g.addColorStop(0, 'rgba(239,68,68,0.03)');
+      g.addColorStop(1, 'rgba(239,68,68,0.40)');
+    } else if (zeroY >= bottom) {
+      g.addColorStop(0, 'rgba(34,197,94,0.40)');
+      g.addColorStop(1, 'rgba(34,197,94,0.03)');
+    } else {
+      var zr = (zeroY - top) / h;
+      g.addColorStop(0,                       'rgba(34,197,94,0.40)');
+      g.addColorStop(Math.max(0, zr - 0.001), 'rgba(34,197,94,0.03)');
+      g.addColorStop(Math.min(1, zr + 0.001), 'rgba(239,68,68,0.03)');
+      g.addColorStop(1,                       'rgba(239,68,68,0.40)');
+    }
+    return g;
+  }
+
+  var dataMin = values.length ? Math.min.apply(null, values) : -1;
+  var dataMax = values.length ? Math.max.apply(null, values) : 1;
+  var estZr = dataMax >= 0 && dataMin < 0 ? dataMax / (dataMax - dataMin) : (dataMin >= 0 ? 1.0 : 0.0);
+  var grad = buildGrad(0, 160, 160 * estZr);
+
+  _perfTrendChartInst = new Chart(ctx, {
+    type: 'line',
+    plugins: [{
+      id: 'perfTrendGradUpdate',
+      afterLayout: function(chart) {
+        var area = chart.chartArea;
+        var ys = chart.scales.y;
+        if (!area || !ys) return;
+        var zeroY = ys.getPixelForValue(0);
+        chart.data.datasets[0].backgroundColor = buildGrad(area.top, area.bottom, zeroY);
+      }
+    }],
+    data: {
+      labels: labels,
+      datasets: [{
+        data: values,
+        borderColor: '#22c55e',
+        borderWidth: 2,
+        backgroundColor: grad,
+        fill: true,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        segment: {
+          borderColor: function(ctx2) {
+            return ctx2.p0.parsed.y >= 0 ? '#22c55e' : '#ef4444';
+          }
+        }
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+        datalabels: { display: false },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          callbacks: {
+            label: function(ctx) { return ctx.parsed.y.toFixed(2) + '%'; }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { maxTicksLimit: 8, font: { size: 10 }, color: '#8D99AE', maxRotation: 0 },
+          grid: { display: false }
+        },
+        y: {
+          ticks: { font: { size: 10 }, color: '#8D99AE', callback: function(v) { return v.toFixed(0) + '%'; } },
+          grid: { color: 'rgba(0,0,0,0.05)' }
+        }
+      }
+    }
+  });
+}
+
 // ===== Filter 連動 =====
 function onMarketChange() {
   populateAccountFilter();
   populateTickerFilter();
   render();
   renderPerfKPI();
+  renderPerfTrendChart();
 }
 
 function populateAccountFilter() {
@@ -798,6 +943,7 @@ function resetFilters() {
   DATE_FROM = "";
   DATE_TO = yval;
   renderPerfKPI();
+  renderPerfTrendChart();
   onMarketChange();
 }
 
