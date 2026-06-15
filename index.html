@@ -164,6 +164,10 @@
     .perf-trend-card { padding: 14px 20px 16px; }
     .perf-trend-header { display: flex; align-items: center; margin-bottom: 8px; }
     .perf-trend-header h3 { font-size: 0.85rem; color: var(--dark-gray); margin: 0; }
+    .perf-gran-toggle { display: inline-flex; margin-left: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .perf-gran-toggle button { border: none; background: #fff; color: var(--primary-light); font-size: 0.78rem; font-weight: 600; padding: 4px 14px; cursor: pointer; line-height: 1.4; transition: background .15s, color .15s; }
+    .perf-gran-toggle button + button { border-left: 1px solid var(--border); }
+    .perf-gran-toggle button.active { background: var(--primary); color: #fff; }
 
     /* === Tables === */
     .table-card {
@@ -485,6 +489,11 @@
   <div id="perfTrendChartWrap" class="chart-card perf-trend-card" style="margin-bottom:16px;">
     <div class="perf-trend-header">
       <h3 id="perfTrendTitle">郭家總體獲利率 趨勢（2026/01/01起）</h3>
+      <div class="perf-gran-toggle" id="perfGranToggle">
+        <button type="button" class="active" data-gran="day" onclick="setPerfTrendGran('day', this)">日</button>
+        <button type="button" data-gran="month" onclick="setPerfTrendGran('month', this)">月</button>
+        <button type="button" data-gran="year" onclick="setPerfTrendGran('year', this)">年</button>
+      </div>
     </div>
     <canvas id="perfTrendCanvas" style="max-height:160px;"></canvas>
   </div>
@@ -739,6 +748,31 @@ function renderPerfKPI() {
 
 // ===== 績效趨勢圖 =====
 var _perfTrendChartInst = null;
+var _perfTrendGran = 'day';   // 'day' | 'month' | 'year'
+
+// 切換 日/月/年 顯示粒度
+function setPerfTrendGran(gran, btn) {
+  _perfTrendGran = gran;
+  var toggle = document.getElementById('perfGranToggle');
+  if (toggle) {
+    Array.prototype.forEach.call(toggle.querySelectorAll('button'), function(b) {
+      b.classList.toggle('active', b === btn);
+    });
+  }
+  renderPerfTrendChart();
+}
+
+// 依粒度彙整：月→每月最後一筆(月底)、年→每年最後一筆(年底)、日→原始每日
+function aggregatePerfRows(rows, gran) {
+  if (gran !== 'month' && gran !== 'year') return rows;
+  var map = {};
+  rows.forEach(function(r) {
+    var key = (gran === 'month') ? r.date.slice(0, 7) : r.date.slice(0, 4);
+    if (!map[key] || r.date > map[key].date) map[key] = r;  // 取該期間最後(最晚)一筆
+  });
+  return Object.keys(map).sort().map(function(k) { return map[k]; });
+}
+
 function renderPerfTrendChart() {
   var market = document.getElementById('marketFilter') ? document.getElementById('marketFilter').value : '';
   var wrap = document.getElementById('perfTrendChartWrap');
@@ -760,7 +794,9 @@ function renderPerfTrendChart() {
 
   var rows = (PERF_DATA || []).filter(function(r) {
     return r.perfRate != null && (!dateTo || r.date <= dateTo);
-  });
+  }).sort(function(a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+
+  rows = aggregatePerfRows(rows, _perfTrendGran);
 
   var rawLabels = rows.map(function(r) { return r.date; });
   var rawValues = rows.map(function(r) { return +(r.perfRate * 100).toFixed(4); });
@@ -861,7 +897,15 @@ function renderPerfTrendChart() {
       },
       scales: {
         x: {
-          ticks: { maxTicksLimit: 8, font: { size: 10 }, color: '#8D99AE', maxRotation: 0 },
+          ticks: { maxTicksLimit: 8, font: { size: 10 }, color: '#8D99AE', maxRotation: 0,
+            callback: function(val) {
+              var lbl = this.getLabelForValue(val);
+              if (!lbl) return lbl;
+              if (_perfTrendGran === 'year') return lbl.slice(0, 4);   // 年：YYYY
+              if (_perfTrendGran === 'month') return lbl.slice(0, 7);  // 月：YYYY-MM
+              return lbl;                                              // 日：YYYY-MM-DD
+            }
+          },
           grid: { display: false }
         },
         y: {
