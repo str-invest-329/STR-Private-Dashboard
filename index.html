@@ -749,6 +749,7 @@ function renderPerfKPI() {
 // ===== 績效趨勢圖 =====
 var _perfTrendChartInst = null;
 var _perfTrendGran = 'day';   // 'day' | 'month' | 'year'
+var _perfTrendPointReal = []; // 與 chart labels 對齊：true=原始資料點, false=插值零點
 
 // 切換 日/月/年 顯示粒度
 function setPerfTrendGran(gran, btn) {
@@ -807,17 +808,21 @@ function renderPerfTrendChart() {
     return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
   var labels = [], values = [];
+  _perfTrendPointReal = [];   // 標記每個點是否為原始資料點(true)或插值零點(false)，供 X 軸刻度/游標判斷
   for (var i = 0; i < rawValues.length; i++) {
-    if (i > 0) {
+    // 僅「日」檢視插入交叉零點(讓顏色分段精準)；月/年不插入，使各點在類別軸上等距
+    if (i > 0 && _perfTrendGran === 'day') {
       var pv = rawValues[i-1], cv = rawValues[i];
       if ((pv < 0 && cv > 0) || (pv > 0 && cv < 0)) {
         var r = Math.abs(pv) / (Math.abs(pv) + Math.abs(cv));
         labels.push(interpDate(rawLabels[i-1], rawLabels[i], r));
         values.push(0);
+        _perfTrendPointReal.push(false);
       }
     }
     labels.push(rawLabels[i]);
     values.push(rawValues[i]);
+    _perfTrendPointReal.push(true);
   }
 
   var canvas = document.getElementById('perfTrendCanvas');
@@ -890,6 +895,11 @@ function renderPerfTrendChart() {
         tooltip: {
           mode: 'index',
           intersect: false,
+          filter: function(item) {
+            // 月/年檢視：只顯示原始(月底/年底)資料點，過濾掉正負交叉插值零點
+            if (_perfTrendGran === 'day') return true;
+            return _perfTrendPointReal[item.dataIndex] !== false;
+          },
           callbacks: {
             label: function(ctx) { return ctx.parsed.y.toFixed(2) + '%'; }
           }
@@ -897,13 +907,19 @@ function renderPerfTrendChart() {
       },
       scales: {
         x: {
-          ticks: { maxTicksLimit: 8, font: { size: 10 }, color: '#8D99AE', maxRotation: 0,
-            callback: function(val) {
+          ticks: {
+            maxTicksLimit: _perfTrendGran === 'day' ? 8 : 100,
+            autoSkip: _perfTrendGran === 'day',
+            font: { size: 10 }, color: '#8D99AE',
+            maxRotation: (_perfTrendGran === 'month') ? 45 : 0,
+            callback: function(val, idx) {
               var lbl = this.getLabelForValue(val);
               if (!lbl) return lbl;
-              if (_perfTrendGran === 'year') return lbl.slice(0, 4);   // 年：YYYY
-              if (_perfTrendGran === 'month') return lbl.slice(0, 7);  // 月：YYYY-MM
-              return lbl;                                              // 日：YYYY-MM-DD
+              if (_perfTrendGran === 'day') return lbl;                   // 日：YYYY-MM-DD
+              // 月/年：只在原始資料點顯示標籤，插值零點不顯示(避免重複)
+              if (_perfTrendPointReal && _perfTrendPointReal[idx] === false) return null;
+              return (_perfTrendGran === 'year') ? lbl.slice(0, 4)        // 年：YYYY
+                                                 : lbl.slice(0, 7);       // 月：YYYY-MM
             }
           },
           grid: { display: false }
