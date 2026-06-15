@@ -802,28 +802,11 @@ function renderPerfTrendChart() {
   var rawLabels = rows.map(function(r) { return r.date; });
   var rawValues = rows.map(function(r) { return +(r.perfRate * 100).toFixed(4); });
 
-  function interpDate(d1, d2, ratio) {
-    var t1 = new Date(d1).getTime(), t2 = new Date(d2).getTime();
-    var d = new Date(t1 + (t2 - t1) * ratio);
-    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-  }
-  var labels = [], values = [];
-  _perfTrendPointReal = [];   // 標記每個點是否為原始資料點(true)或插值零點(false)，供 X 軸刻度/游標判斷
-  for (var i = 0; i < rawValues.length; i++) {
-    // 僅「日」檢視插入交叉零點(讓顏色分段精準)；月/年不插入，使各點在類別軸上等距
-    if (i > 0 && _perfTrendGran === 'day') {
-      var pv = rawValues[i-1], cv = rawValues[i];
-      if ((pv < 0 && cv > 0) || (pv > 0 && cv < 0)) {
-        var r = Math.abs(pv) / (Math.abs(pv) + Math.abs(cv));
-        labels.push(interpDate(rawLabels[i-1], rawLabels[i], r));
-        values.push(0);
-        _perfTrendPointReal.push(false);
-      }
-    }
-    labels.push(rawLabels[i]);
-    values.push(rawValues[i]);
-    _perfTrendPointReal.push(true);
-  }
+  // 線條與填色皆以「0 為界的垂直漸層」上色(見 afterLayout)，0 以上綠、0 以下紅，
+  // 於精確的零像素切換，因此不需插入交叉零點：各點在類別軸上等距，且皆為原始資料點。
+  var labels = rawLabels.slice();
+  var values = rawValues.slice();
+  _perfTrendPointReal = labels.map(function() { return true; });
 
   var canvas = document.getElementById('perfTrendCanvas');
   if (!canvas) return;
@@ -851,10 +834,26 @@ function renderPerfTrendChart() {
     return g;
   }
 
+  // 線條漸層：0 以上綠、0 以下紅，於零像素硬切換
+  function buildLineGrad(top, bottom, zeroY) {
+    var h = bottom - top;
+    if (h <= 0) return '#22c55e';
+    if (zeroY <= top) return '#ef4444';      // 全負
+    if (zeroY >= bottom) return '#22c55e';   // 全正
+    var g = ctx.createLinearGradient(0, top, 0, bottom);
+    var zr = (zeroY - top) / h;
+    g.addColorStop(0,                        '#22c55e');
+    g.addColorStop(Math.max(0, zr - 0.0005), '#22c55e');
+    g.addColorStop(Math.min(1, zr + 0.0005), '#ef4444');
+    g.addColorStop(1,                        '#ef4444');
+    return g;
+  }
+
   var dataMin = values.length ? Math.min.apply(null, values) : -1;
   var dataMax = values.length ? Math.max.apply(null, values) : 1;
   var estZr = dataMax >= 0 && dataMin < 0 ? dataMax / (dataMax - dataMin) : (dataMin >= 0 ? 1.0 : 0.0);
   var grad = buildGrad(0, 160, 160 * estZr);
+  var lineGrad = buildLineGrad(0, 160, 160 * estZr);
 
   _perfTrendChartInst = new Chart(ctx, {
     type: 'line',
@@ -866,24 +865,20 @@ function renderPerfTrendChart() {
         if (!area || !ys) return;
         var zeroY = ys.getPixelForValue(0);
         chart.data.datasets[0].backgroundColor = buildGrad(area.top, area.bottom, zeroY);
+        chart.data.datasets[0].borderColor = buildLineGrad(area.top, area.bottom, zeroY);
       }
     }],
     data: {
       labels: labels,
       datasets: [{
         data: values,
-        borderColor: '#22c55e',
+        borderColor: lineGrad,
         borderWidth: 2,
         backgroundColor: grad,
         fill: true,
         tension: 0.4,
         pointRadius: 0,
-        pointHoverRadius: 4,
-        segment: {
-          borderColor: function(ctx2) {
-            return ctx2.p0.parsed.y >= 0 ? '#22c55e' : '#ef4444';
-          }
-        }
+        pointHoverRadius: 4
       }]
     },
     options: {
