@@ -1768,6 +1768,17 @@ function renderIncomeTable(currency, year, yearVar, label) {
     return ba - bb;
   });
 
+  // 目前持倉（快照，不隨年度變）：彙總 股票狀態-帳戶 該市場各帳戶的 持倉市值 / 持有成本總額
+  var holdMkt = (currency === "USD") ? "美股" : "台股";
+  var holdMap = {};
+  (DATA.equity_by_account || []).forEach(function(e) {
+    if ((e["市場"] || "") !== holdMkt) return;
+    var hk = (e["銀行"] || "") + "-" + (e["帳戶名"] || "");
+    if (!holdMap[hk]) holdMap[hk] = { mv: 0, cost: 0 };
+    holdMap[hk].mv   += num(e["持倉市值"]);
+    holdMap[hk].cost += num(e["持有成本總額"]);
+  });
+
   var opts = '<option value="ALL"' + (year === "ALL" ? " selected" : "") + '>全部(累計)</option>';
   years.forEach(function(y) {
     opts += '<option value="' + y + '"' + (String(year) === String(y) ? " selected" : "") + '>' + y + '</option>';
@@ -1781,18 +1792,21 @@ function renderIncomeTable(currency, year, yearVar, label) {
 
   html += '<table><tr><th>銀行</th><th>帳戶</th>' +
     '<th class="right">出售收入</th><th class="right">出售成本</th>' +
-    '<th class="right">財產交易所得</th><th class="right">營利所得</th></tr>';
+    '<th class="right">財產交易所得</th><th class="right">營利所得</th>' +
+    '<th class="right">持倉市值</th><th class="right">持倉成本</th></tr>';
 
   if (list.length === 0) {
-    html += '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">此幣別目前無已處分紀錄</td></tr>';
+    html += '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">此幣別目前無已處分紀錄</td></tr>';
     return html + '</table>';
   }
 
-  var totals = { proceeds: 0, cost: 0, gain: 0, dividend: 0 };
+  var totals = { proceeds: 0, cost: 0, gain: 0, dividend: 0, holdMV: 0, holdCost: 0 };
   list.forEach(function(a) {
     var d = yrAcc[a.bank + "-" + a.account] || { proceeds: 0, cost: 0, dividend: 0 };
+    var h = holdMap[a.bank + "-" + a.account] || { mv: 0, cost: 0 };
     var gain = d.proceeds - d.cost;
     totals.proceeds += d.proceeds; totals.cost += d.cost; totals.gain += gain; totals.dividend += d.dividend;
+    totals.holdMV += h.mv; totals.holdCost += h.cost;
     html += '<tr>' +
       '<td>' + a.bank + '</td>' +
       '<td><span class="badge badge-account">' + a.account + '</span></td>' +
@@ -1800,6 +1814,8 @@ function renderIncomeTable(currency, year, yearVar, label) {
       '<td class="right">' + fmtCurrency(d.cost) + '</td>' +
       '<td class="right ' + valCls(gain) + '">' + fmtCurrency(gain) + '</td>' +
       '<td class="right">' + fmtCurrency(d.dividend) + '</td>' +
+      '<td class="right">' + fmtCurrency(h.mv) + '</td>' +
+      '<td class="right">' + fmtCurrency(h.cost) + '</td>' +
       '</tr>';
   });
 
@@ -1809,6 +1825,8 @@ function renderIncomeTable(currency, year, yearVar, label) {
     '<td class="right">' + fmtCurrency(totals.cost) + '</td>' +
     '<td class="right ' + valCls(totals.gain) + '">' + fmtCurrency(totals.gain) + '</td>' +
     '<td class="right">' + fmtCurrency(totals.dividend) + '</td>' +
+    '<td class="right">' + fmtCurrency(totals.holdMV) + '</td>' +
+    '<td class="right">' + fmtCurrency(totals.holdCost) + '</td>' +
     '</tr>';
 
   html += '</table>';
