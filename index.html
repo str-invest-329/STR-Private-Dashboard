@@ -519,6 +519,8 @@
       <div class="tab" onclick="switchTab('accounts', this)">帳戶狀態</div>
       <div class="tab" onclick="switchTab('holdings', this)">股票狀態-帳戶</div>
       <div class="tab" onclick="switchTab('stocks', this)">股票狀態-標的</div>
+      <div class="tab" id="tabOverseas" onclick="switchTab('overseas', this)">海外所得</div>
+      <div class="tab" id="tabTwstock" onclick="switchTab('twstock', this)">台股所得</div>
     </div>
     <div class="tab-content" id="tabContent">
       <div class="loading">載入中...</div>
@@ -561,6 +563,13 @@ var API_URL = "https://script.google.com/macros/s/AKfycby0kJjdjxa3o10y9WSWyzqF0s
 // ===== 全域資料 =====
 var DATA = null;
 var currentTab = "market";
+
+// ===== 所得分頁（海外所得/台股所得）=====
+var overseasYear = null;        // 海外所得（USD）年度；null = 預設帶最新年度
+var twYear = null;              // 台股所得（TWD）年度；null = 預設帶最新年度
+var incomeTrades = null;        // 股票事件快取（所得分頁用）
+var incomeAccountEvents = null; // 帳戶事件快取（所得分頁用）
+var incomeLoading = false;
 
 // ===== 日期篩選 =====
 var DATE_FROM = "";
@@ -1022,6 +1031,7 @@ function render() {
   if (!DATA) return;
   populateAccountFilter();
   populateTickerFilter();
+  updateIncomeTabsVisibility();
   renderKPI();
   renderCharts();
   renderTable();
@@ -1612,9 +1622,205 @@ function renderTable() {
     case "accounts": html = renderAccountsTable(market); break;
     case "holdings": html = renderHoldingsTable(market); break;
     case "stocks": html = renderStocksTable(market); break;
+    case "overseas": html = renderOverseasTable(); break;
+    case "twstock":  html = renderTwStockTable(); break;
   }
 
   document.getElementById("tabContent").innerHTML = html;
+}
+
+// ===== 所得分頁：逐帳戶 出售收入 / 出售成本 / 財產交易所得 / 營利所得 =====
+// 財產交易所得 = 出售收入 - 出售成本（已處分股票的資本利得）；營利所得 = 配息（股利）
+// currency：USD = 海外所得（美股）、TWD = 台股所得；成本法採加權平均成本法
+
+// 依市場切換所得分頁：美股只顯示「海外所得」、台股只顯示「台股所得」
+function updateIncomeTabsVisibility() {
+  var market = document.getElementById("marketFilter").value;
+  var tabOverseas = document.getElementById("tabOverseas");
+  var tabTwstock  = document.getElementById("tabTwstock");
+  if (!tabOverseas || !tabTwstock) return;
+
+  var showOverseas = (market === "美股");
+  var showTwstock  = (market === "台股");
+  tabOverseas.style.display = showOverseas ? "" : "none";
+  tabTwstock.style.display  = showTwstock  ? "" : "none";
+
+  if (currentTab === "overseas" && !showOverseas) currentTab = showTwstock ? "twstock" : "market";
+  else if (currentTab === "twstock" && !showTwstock) currentTab = showOverseas ? "overseas" : "market";
+
+  var map = { market: 0, accounts: 1, holdings: 2, stocks: 3, overseas: 4, twstock: 5 };
+  var tabs = document.querySelectorAll("#statusTabs .tab");
+  tabs.forEach(function(t) { t.classList.remove("active"); });
+  if (map[currentTab] != null && tabs[map[currentTab]]) tabs[map[currentTab]].classList.add("active");
+}
+
+// 所得分頁需要完整股票事件 + 帳戶事件（本 dashboard 無期間快取，另抓一份）
+async function loadIncomeEvents() {
+  if (incomeLoading) return;
+  incomeLoading = true;
+  try {
+    var results = await Promise.all([
+      fetch(API_URL + "?action=trades").then(function(r) { return r.json(); }),
+      fetch(API_URL + "?action=account_events").then(function(r) { return r.json(); })
+    ]);
+    incomeTrades = results[0].trade_events || [];
+    incomeAccountEvents = results[1].account_events || [];
+  } catch (e) {
+    incomeTrades = []; incomeAccountEvents = [];
+  }
+  incomeLoading = false;
+  if (currentTab === "overseas" || currentTab === "twstock") renderTable();
+}
+
+function computeIncomeByAccount(year, currency) {
+  var acc = {};
+  function ensure(bank, account) {
+    var k = bank + "-" + account;
+    if (!acc[k]) acc[k] = { bank: bank, account: account, proceeds: 0, cost: 0, dividend: 0 };
+    return acc[k];
+  }
+  function inYear(dt) {
+    if (!dt || isNaN(dt)) return false;
+    if (year === "ALL") return true;
+    return dt.getFullYear() === Number(year);
+  }
+
+  // 股票處分：依時序處理「全部」交易以維持每股成本正確，僅在選定年度記錄賣出
+  var trades = (incomeTrades || []).slice().sort(function(a, b) {
+    return new Date(a["日期"]) - new Date(b["日期"]);
+  });
+  var pos = {};
+  trades.forEach(function(t) {
+    if ((t["幣別"] || "") !== currency) return;
+    var ticker = t["Ticker"], dir = t["方向"];
+    var shares = num(t["股數"]), amount = num(t["成交金額"]), newShares = num(t["分割/反分割後新股"]);
+    var dt = t["日期"] ? new Date(t["日期"]) : null;
+    var bank = t["銀行"] || "", account = t["帳戶名"] || "";
+    if (!ticker || !dt) return;
+    var qk = bank + "-" + account + "|" + ticker;
+    if (!pos[qk]) pos[qk] = { shares: 0, totalCost: 0 };
+    var p = pos[qk];
+    if (dir === "買" && shares > 0) {
+      p.shares += shares; p.totalCost += amount;
+    } else if (dir === "賣" && shares > 0) {
+      var avg = p.shares > 0 ? p.totalCost / p.shares : 0;
+      var costBasis = avg * shares;
+      p.shares -= shares; p.totalCost = avg * p.shares;
+      if (inYear(dt)) { var r = ensure(bank, account); r.proceeds += amount; r.cost += costBasis; }
+    } else if (newShares > 0 && dir !== "買" && dir !== "賣") {
+      if (p.shares > 0 && newShares !== p.shares) p.shares = newShares;
+    }
+  });
+
+  // 營利所得：配息事件（依幣別）
+  (incomeAccountEvents || []).forEach(function(ae) {
+    if ((ae["事件類型"] || "") !== "配息") return;
+    if ((ae["幣別"] || "") !== currency) return;
+    var dt = ae["日期"] ? new Date(ae["日期"]) : null;
+    if (!inYear(dt)) return;
+    ensure(ae["銀行"] || "", ae["帳戶名"] || "").dividend += num(ae["金額"]);
+  });
+
+  return acc;
+}
+
+function renderIncomeTable(currency, year, yearVar, label) {
+  if (!incomeTrades || !incomeAccountEvents) {
+    loadIncomeEvents();
+    return '<div class="loading">載入中...</div>';
+  }
+
+  // 年度選項：從該幣別的賣出 + 配息蒐集出現過的年份（先算，才能決定預設年度）
+  var yearSet = {};
+  (incomeTrades || []).forEach(function(t) {
+    if ((t["幣別"] || "") !== currency || t["方向"] !== "賣") return;
+    var dt = t["日期"] ? new Date(t["日期"]) : null;
+    if (dt && !isNaN(dt)) yearSet[dt.getFullYear()] = true;
+  });
+  (incomeAccountEvents || []).forEach(function(ae) {
+    if ((ae["事件類型"] || "") !== "配息" || (ae["幣別"] || "") !== currency) return;
+    var dt = ae["日期"] ? new Date(ae["日期"]) : null;
+    if (dt && !isNaN(dt)) yearSet[dt.getFullYear()] = true;
+  });
+  var years = Object.keys(yearSet).sort(function(a, b) { return b - a; });
+
+  // 預設帶最新年度（無資料時退回全部累計）
+  if (year == null) {
+    year = years.length ? String(years[0]) : "ALL";
+    window[yearVar] = year;
+  }
+
+  var allAcc = computeIncomeByAccount("ALL", currency);
+  var yrAcc  = computeIncomeByAccount(year, currency);
+
+  var personOrder = {}; var pi = 0;
+  (DATA.account_config || []).forEach(function(c) {
+    var nm = c["帳戶名"] || ""; if (!(nm in personOrder)) personOrder[nm] = pi++;
+  });
+  var bankOrder = { "元大": 0, "上海": 1 };
+  var list = Object.keys(allAcc).map(function(k) { return allAcc[k]; });
+  list.sort(function(a, b) {
+    var pa = (a.account in personOrder) ? personOrder[a.account] : 999;
+    var pb = (b.account in personOrder) ? personOrder[b.account] : 999;
+    if (pa !== pb) return pa - pb;
+    var ba = (a.bank in bankOrder) ? bankOrder[a.bank] : 9;
+    var bb = (b.bank in bankOrder) ? bankOrder[b.bank] : 9;
+    return ba - bb;
+  });
+
+  var opts = '<option value="ALL"' + (year === "ALL" ? " selected" : "") + '>全部(累計)</option>';
+  years.forEach(function(y) {
+    opts += '<option value="' + y + '"' + (String(year) === String(y) ? " selected" : "") + '>' + y + '</option>';
+  });
+
+  var html = '<div class="event-filter-bar" style="margin-bottom:12px">' +
+    '<label style="font-weight:600;color:var(--muted);margin-right:8px">所得年度</label>' +
+    '<select onchange="' + yearVar + '=this.value; renderTable()">' + opts + '</select>' +
+    '<span class="event-count" style="margin-left:12px">幣別：' + label + '</span>' +
+    '</div>';
+
+  html += '<table><tr><th>銀行</th><th>帳戶</th>' +
+    '<th class="right">出售收入</th><th class="right">出售成本</th>' +
+    '<th class="right">財產交易所得</th><th class="right">營利所得</th></tr>';
+
+  if (list.length === 0) {
+    html += '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">此幣別目前無已處分紀錄</td></tr>';
+    return html + '</table>';
+  }
+
+  var totals = { proceeds: 0, cost: 0, gain: 0, dividend: 0 };
+  list.forEach(function(a) {
+    var d = yrAcc[a.bank + "-" + a.account] || { proceeds: 0, cost: 0, dividend: 0 };
+    var gain = d.proceeds - d.cost;
+    totals.proceeds += d.proceeds; totals.cost += d.cost; totals.gain += gain; totals.dividend += d.dividend;
+    html += '<tr>' +
+      '<td>' + a.bank + '</td>' +
+      '<td><span class="badge badge-account">' + a.account + '</span></td>' +
+      '<td class="right">' + fmtCurrency(d.proceeds) + '</td>' +
+      '<td class="right">' + fmtCurrency(d.cost) + '</td>' +
+      '<td class="right ' + valCls(gain) + '">' + fmtCurrency(gain) + '</td>' +
+      '<td class="right">' + fmtCurrency(d.dividend) + '</td>' +
+      '</tr>';
+  });
+
+  html += '<tr style="font-weight:700;border-top:2px solid var(--border)">' +
+    '<td colspan="2">合計</td>' +
+    '<td class="right">' + fmtCurrency(totals.proceeds) + '</td>' +
+    '<td class="right">' + fmtCurrency(totals.cost) + '</td>' +
+    '<td class="right ' + valCls(totals.gain) + '">' + fmtCurrency(totals.gain) + '</td>' +
+    '<td class="right">' + fmtCurrency(totals.dividend) + '</td>' +
+    '</tr>';
+
+  html += '</table>';
+  return html;
+}
+
+function renderOverseasTable() {
+  return renderIncomeTable("USD", overseasYear, "overseasYear", "USD（美股海外所得）");
+}
+
+function renderTwStockTable() {
+  return renderIncomeTable("TWD", twYear, "twYear", "TWD（台股所得）");
 }
 
 function renderHoldingsTable(market) {
