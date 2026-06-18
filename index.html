@@ -1794,7 +1794,8 @@ function renderIncomeTable(currency, year, yearVar, label) {
 
   html += '<table><tr><th>銀行</th><th>帳戶</th>' +
     '<th class="right">出售收入</th><th class="right">出售成本</th>' +
-    '<th class="right">財產交易所得</th><th class="right">營利所得</th>' +
+    '<th class="right" style="color:var(--red);font-weight:800">財產交易所得</th>' +
+    '<th class="right" style="color:var(--red);font-weight:800">營利所得</th>' +
     '<th class="right">持倉市值</th><th class="right">持倉成本</th></tr>';
 
   if (list.length === 0) {
