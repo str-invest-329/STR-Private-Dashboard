@@ -1902,8 +1902,8 @@ function renderStocksTable(market) {
     '<th class="right">已實現損益</th><th class="right">股息</th>' +
     '<th class="right">倉位配置<br><span style="font-weight:400;font-size:11px;color:var(--muted)">（市值基準）</span></th></tr>';
 
-  // 倉位配置基準：所有標的市值加總（無持倉標的市值為 0，不影響基準）
-  var totalMV = 0;
+  // 倉位配置基準：與「倉位配置（市值基準）」圓餅圖一致 = 各標的市值加總 + 現金＋定存（即總資產）
+  var totalMV = getFilteredSummary().cash;
   data.forEach(function(e) { totalMV += num(e["總持倉市值"]); });
   function fmtAlloc(mv) { return totalMV > 0 ? (mv / totalMV * 100).toFixed(2) + "%" : "-"; }
 
