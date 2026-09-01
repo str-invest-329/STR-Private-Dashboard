@@ -106,6 +106,34 @@ var ALL_BOARDS = {
   "市場狀態表": 5027865114, "定存狀態表-帳戶": 5027865115
 };
 
+// ===== 一次性設定：在帳戶/市場狀態表 board 建立「其他」數值欄 =====
+// 為何需要：MCP 連的是公司帳號，無法建立私人帳號 board 的欄位；此函式用本檔 MONDAY_TOKEN（私人帳號）建欄。
+// 執行方式：Apps Script 編輯器中選此函式 → 執行 → 看彈窗/Log 取得兩個欄位 ID，
+//           再填回下方 STATUS_BOARDS.account.columns["其他"] 與 .market.columns["其他"]。建完即可刪除本函式。
+function createPrivateOtherColumns() {
+  var targets = [
+    { name: "帳戶狀態表", boardId: 5027865100 },
+    { name: "市場狀態表", boardId: 5027865114 }
+  ];
+  var out = [];
+  for (var i = 0; i < targets.length; i++) {
+    var t = targets[i];
+    var q = 'mutation { create_column(board_id: ' + t.boardId +
+            ', column_type: numbers, title: "其他", description: "畸零股退還、手續費退還等；計入可用現金但不計入資本與損益") { id title } }';
+    var res = UrlFetchApp.fetch(MONDAY_API, {
+      method: "post", contentType: "application/json",
+      headers: { "Authorization": MONDAY_TOKEN },
+      payload: JSON.stringify({ query: q }), muteHttpExceptions: true
+    });
+    var j = JSON.parse(res.getContentText());
+    var id = (j.data && j.data.create_column && j.data.create_column.id) || ("ERROR: " + JSON.stringify(j.errors || j));
+    out.push(t.name + " → " + id);
+    Logger.log(t.name + " 其他欄 ID = " + id);
+  }
+  SpreadsheetApp.getUi().alert("私人「其他」欄建立結果：\n\n" + out.join("\n") +
+    "\n\n請把這兩個 ID 填回 monday_sync.js 的 STATUS_BOARDS.account/market.columns[\"其他\"]。");
+}
+
 // ===== 以下為功能函數 =====
 
 function onOpen() {
